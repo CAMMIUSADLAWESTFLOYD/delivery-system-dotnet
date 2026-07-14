@@ -1,0 +1,47 @@
+@model delivery_system_dotnet.Models.Products
+@{
+    ViewData["Title"] = "Detalle del Producto - FlashBite";
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card card-flash border">
+                <img src="@Model.ImagePath" alt="@Model.Name" class="card-img-top" style="max-height: 300px; object-fit: cover;" />
+                <div class="card-body">
+                    <h2 class="card-title font-title text-danger mb-1 border-bottom pb-2">@Model.Name</h2>
+                    @if (Model.Restaurant != null)
+                    {
+                        <p class="text-primary fw-bold mb-3"><i class="bi bi-shop me-1"></i> @Model.Restaurant.Name</p>
+                    }
+                    <p class="text-muted mb-4">@(string.IsNullOrEmpty(Model.Description) ? "Sin descripción disponible." : Model.Description)</p>
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <span class="text-muted">Precio unitario:</span>
+                        <h3 class="font-title text-danger mb-0">$@Model.Price.ToString("F2")</h3>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <span class="text-muted">Disponibilidad en stock:</span>
+                        <span class="badge @(Model.Available ? "bg-success" : "bg-danger")">@(Model.Available ? "Disponible" : "Agotado")</span>
+                    </div>
+
+                    <hr />
+
+                    <div class="d-flex gap-2 justify-content-between mt-4">
+                        <a href="/Cliente/BuscarProductos" class="btn btn-outline-danger btn-sm">Volver al Menú</a>
+                        @if (Model.Available)
+                        {
+                            <form method="post" action="/Cliente/RealizarPedido" class="d-inline-block">
+                                <input type="hidden" name="productId" value="@Model.Id" />
+                                <input type="hidden" name="quantity" value="1" />
+                                <input type="hidden" name="destinyAddres" value="Dirección predeterminada" />
+                                <button type="submit" class="btn btn-danger btn-sm">Pedir ahora</button>
+                            </form>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

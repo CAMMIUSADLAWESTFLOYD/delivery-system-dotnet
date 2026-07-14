@@ -1,0 +1,127 @@
+@model delivery_system_dotnet.Models.RestaurantFormViewModel
+@{
+    ViewData["Title"] = $"{ViewData["FormTitle"]} - FlashBite";
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="section-heading m-0">@ViewData["FormTitle"]</h4>
+                <a href="/Admin/GestionarRestaurantes" class="btn btn-delivery-outline btn-sm">
+                    <i data-lucide="arrow-left"></i> Volver al listado
+                </a>
+            </div>
+
+            <div class="dashboard-card">
+                <div class="card-body p-4">
+                    <form asp-action="@ViewData["FormAction"]" enctype="multipart/form-data" method="post">
+                        <input type="hidden" asp-for="Restaurant.Id" />
+
+                        <div class="row">
+                            <div class="col-md-7 mb-3">
+                                <label asp-for="Restaurant.Name" class="form-label">Nombre *</label>
+                                <input asp-for="Restaurant.Name" class="form-control" required maxlength="80" placeholder="Ej.: La Casona Ibarreña" />
+                                <span asp-validation-for="Restaurant.Name" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-5 mb-3">
+                                <label asp-for="Restaurant.Category" class="form-label">Categoría</label>
+                                <input asp-for="Restaurant.Category" class="form-control" list="categorias-restaurante" placeholder="Ej.: Comida Típica" />
+                                <datalist id="categorias-restaurante">
+                                    <option value="Comida Típica"></option>
+                                    <option value="Mariscos"></option>
+                                    <option value="Parrilla"></option>
+                                    <option value="Cafetería"></option>
+                                    <option value="Heladería y Postres"></option>
+                                    <option value="Internacional"></option>
+                                    <option value="Asados"></option>
+                                    <option value="Gourmet"></option>
+                                </datalist>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Restaurant.Description" class="form-label">Descripción</label>
+                            <textarea asp-for="Restaurant.Description" class="form-control" rows="2" maxlength="300"
+                                      placeholder="Se muestra en la tarjeta del restaurante para los clientes."></textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label asp-for="Restaurant.Address" class="form-label">Dirección *</label>
+                                <input asp-for="Restaurant.Address" class="form-control" required maxlength="150" placeholder="Calle, número y referencia, Ibarra" />
+                                <span asp-validation-for="Restaurant.Address" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label asp-for="Restaurant.Phone" class="form-label">Teléfono *</label>
+                                <input asp-for="Restaurant.Phone" class="form-control" required maxlength="15" placeholder="06XXXXXXX / 09XXXXXXXX" />
+                                <span asp-validation-for="Restaurant.Phone" class="text-danger small"></span>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-3 col-6 mb-3">
+                                <label asp-for="Restaurant.OpeningHour" class="form-label">Abre</label>
+                                <input asp-for="Restaurant.OpeningHour" type="time" class="form-control" />
+                            </div>
+                            <div class="col-md-3 col-6 mb-3">
+                                <label asp-for="Restaurant.ClosingHour" class="form-label">Cierra</label>
+                                <input asp-for="Restaurant.ClosingHour" type="time" class="form-control" />
+                            </div>
+                            <div class="col-md-3 col-6 mb-3">
+                                <label asp-for="Restaurant.Latitude" class="form-label">Latitud</label>
+                                <input asp-for="Restaurant.Latitude" class="form-control" type="number" step="any" />
+                                <small class="text-muted">Ibarra ≈ 0.35</small>
+                            </div>
+                            <div class="col-md-3 col-6 mb-3">
+                                <label asp-for="Restaurant.Longitude" class="form-label">Longitud</label>
+                                <input asp-for="Restaurant.Longitude" class="form-control" type="number" step="any" />
+                                <small class="text-muted">Ibarra ≈ -78.12</small>
+                            </div>
+                        </div>
+
+                        <fieldset class="mb-3 p-3" style="border: 1px solid var(--fb-border); background: var(--fb-surface-alt);">
+                            <legend class="form-label m-0 mb-2" style="font-size: 13px;">Imagen del restaurante</legend>
+                            @if (!string.IsNullOrEmpty(Model.Restaurant.ImagePath))
+                            {
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <img src="@Model.Restaurant.ImagePath" alt="Imagen actual"
+                                         style="width: 72px; height: 48px; object-fit: cover; border: 1px solid var(--fb-border);" />
+                                    <small class="text-muted">Imagen actual. Sube un archivo o pega una URL solo si quieres reemplazarla.</small>
+                                </div>
+                            }
+                            <div class="row">
+                                <div class="col-md-6 mb-2">
+                                    <label asp-for="ImageFile" class="form-label">Subir archivo</label>
+                                    <input type="file" asp-for="ImageFile" class="form-control" accept="image/*" />
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <label asp-for="ImageUrl" class="form-label">o URL externa</label>
+                                    <input asp-for="ImageUrl" class="form-control" placeholder="https://images.unsplash.com/..." />
+                                    <span asp-validation-for="ImageUrl" class="text-danger small"></span>
+                                </div>
+                            </div>
+                            <small class="text-muted">Si envías ambas, el archivo tiene prioridad.</small>
+                        </fieldset>
+
+                        <div class="form-check mb-4">
+                            <input asp-for="Restaurant.IsActive" class="form-check-input" />
+                            <label asp-for="Restaurant.IsActive" class="form-check-label">Visible para los clientes</label>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="/Admin/GestionarRestaurantes" class="btn btn-delivery-outline">Cancelar</a>
+                            <button type="submit" class="btn btn-delivery-primary">
+                                <i data-lucide="check"></i> Guardar restaurante
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}

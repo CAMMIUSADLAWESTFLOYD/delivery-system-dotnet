@@ -1,0 +1,109 @@
+@model List<delivery_system_dotnet.Models.Order>
+@{
+    ViewData["Title"] = "Supervisión de Pedidos - FlashBite";
+    var repartidores = ViewBag.Repartidores as List<delivery_system_dotnet.Models.Delivery>
+                       ?? new List<delivery_system_dotnet.Models.Delivery>();
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="dashboard-header mb-4">
+        <h1 class="font-title text-danger mb-1">Supervisión de Pedidos (Monitor)</h1>
+        <p class="text-muted mb-0">Controla el estado en tiempo real de los envíos, cancela órdenes o reasigna estados.</p>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success border-0 rounded-3 text-center mb-4">
+            @TempData["Message"]
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger border-0 rounded-3 text-center mb-4">
+            @TempData["Error"]
+        </div>
+    }
+
+    <div class="card card-flash border">
+        <div class="card-body">
+            <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Pedidos Activos e Históricos</h5>
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID de Pedido</th>
+                            <th>Cliente</th>
+                            <th>Dirección</th>
+                            <th>Total</th>
+                            <th>Repartidor</th>
+                            <th>Estado</th>
+                            <th>Acciones de Administrador</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model != null && Model.Any())
+                        {
+                            foreach (var order in Model)
+                            {
+                                <tr>
+                                    <td><strong>@order.Id</strong></td>
+                                    <td>@(order.Client?.Name ?? "Juan Pérez")</td>
+                                    <td>@order.DestinyAddres</td>
+                                    <td>$@order.Total.ToString("F2")</td>
+                                    <td>@(order.Delivery?.Name ?? "Sin Asignar")</td>
+                                    <td>
+                                        <span class="badge @(order.Status == "Pendiente" ? "bg-warning" : order.Status == "En Camino" ? "bg-info" : order.Status == "Entregado" ? "bg-success" : "bg-danger")">
+                                            @order.Status
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <form method="post" action="/Admin/UpdateOrderStatus" class="d-flex align-items-center gap-1">
+                                                <input type="hidden" name="orderId" value="@order.Id" />
+                                                <select name="newStatus" class="form-select form-select-sm" style="width: 130px;">
+                                                    <option value="Pendiente">Pendiente</option>
+                                                    <option value="Aceptado">Aceptado</option>
+                                                    <option value="Preparando">Preparando</option>
+                                                    <option value="En Camino">En Camino</option>
+                                                    <option value="Entregado">Entregado</option>
+                                                    <option value="Cancelado">Cancelado</option>
+                                                </select>
+                                                <button type="submit" class="btn btn-sm btn-outline-danger py-1">OK</button>
+                                            </form>
+
+                                            @if (order.Status != "Cancelado" && order.Status != "Entregado")
+                                            {
+                                                <form method="post" action="/Admin/AsignarRepartidor" class="d-flex align-items-center gap-1">
+                                                    <input type="hidden" name="orderId" value="@order.Id" />
+                                                    <select name="deliveryDni" class="form-select form-select-sm" style="width: 150px;">
+                                                        @foreach (var rep in repartidores)
+                                                        {
+                                                            <option value="@rep.Dni" selected="@(order.DeliveryDni == rep.Dni)">@rep.Name</option>
+                                                        }
+                                                    </select>
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger py-1">Asignar</button>
+                                                </form>
+
+                                                <form method="post" action="/Admin/CancelOrderAdmin" class="d-inline">
+                                                    <input type="hidden" name="orderId" value="@order.Id" />
+                                                    <button type="submit" class="btn btn-sm btn-danger py-1">Cancelar</button>
+                                                </form>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">No hay pedidos registrados en el sistema.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

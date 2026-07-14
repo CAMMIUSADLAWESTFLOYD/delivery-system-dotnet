@@ -1,0 +1,47 @@
+@{
+    ViewData["Title"] = "Reportes e Indicadores - FlashBite";
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="dashboard-header mb-4">
+        <h1 class="font-title text-danger mb-1">Reportes e Indicadores de Rendimiento</h1>
+        <p class="text-muted mb-0">Visualiza métricas del sistema, ingresos por ventas y rendimiento de entregas.</p>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="metric-card">
+                <div class="metric-value">@ViewBag.TotalOrders</div>
+                <div class="metric-label">Total Pedidos</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="metric-card">
+                <div class="metric-value">@ViewBag.ActiveOrders</div>
+                <div class="metric-label">Pedidos Activos</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="metric-card">
+                <div class="metric-value">@ViewBag.CompletedOrders</div>
+                <div class="metric-label">Entregas Exitosas</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="metric-card">
+                <div class="metric-value">$@ViewBag.Revenue.ToString("F2")</div>
+                <div class="metric-label">Ingresos Totales</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card card-flash border">
+        <div class="card-body">
+            <h5 class="card-title text-danger border-bottom pb-2 font-title">Resumen de Ventas de esta Iteración</h5>
+            <p>Se han configurado todos los métodos de cálculo correspondientes a la interfaz <code>ICalculate</code> de acuerdo al diagrama de clases UML (incluyendo la tasa de IVA de 15% y los costos de envío basados en distancia).</p>
+            <div class="alert alert-info border-0 rounded-3">
+                <strong>Nota:</strong> Los datos mostrados arriba corresponden al conteo en tiempo real de la base de datos de FlashBite.
+            </div>
+        </div>
+    </div>
+</div>

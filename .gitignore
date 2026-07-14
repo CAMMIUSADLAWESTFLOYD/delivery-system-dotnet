@@ -1,0 +1,21 @@
+## Build outputs
+bin/
+obj/
+
+## IDE and user settings
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## Database files
+delivery.db
+delivery.db-journal
+delivery.db-shm
+delivery.db-wal
+*.db
+
+## Local tools
+.dotnet/

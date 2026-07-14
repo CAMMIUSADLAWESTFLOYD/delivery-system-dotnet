@@ -1,0 +1,78 @@
+@{
+    ViewData["Title"] = "Panel de Administrador - FlashBite";
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="row">
+        <div class="col-md-12 mb-4">
+            <div class="card card-flash border-0 bg-flashbite text-white p-4">
+                <h1 class="font-title mb-1">Panel de administración</h1>
+                <p class="mb-0 text-white-50">Gestiona usuarios, repartidores y supervisa el estado global de entregas.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Tarjeta Perfil Admin -->
+        <div class="col-md-4 mb-4">
+            <div class="card card-flash border-0 h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Administrador</h5>
+                    <p class="mb-2"><strong>Nombre:</strong> @User.Identity?.Name</p>
+                    <p class="mb-2"><strong>Correo:</strong> @User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Email)?.Value</p>
+                    <p class="mb-0 text-muted small">Rol: Administrador del Sistema</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Métricas del Sistema -->
+        <div class="col-md-8 mb-4">
+            <div class="card card-flash border-0 h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Monitoreo de Operaciones</h5>
+                    <div class="row g-3 text-center">
+                        <div class="col-sm-4">
+                            <div class="p-3 bg-light rounded-3 border">
+                                <h2 class="text-danger m-0 font-title font-weight-bold">12</h2>
+                                <div class="text-muted small">Pedidos Activos</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="p-3 bg-light rounded-3 border">
+                                <h2 class="text-danger m-0 font-title font-weight-bold">8</h2>
+                                <div class="text-muted small">Repartidores en Ruta</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="p-3 bg-light rounded-3 border">
+                                <h2 class="text-danger m-0 font-title font-weight-bold">$142.50</h2>
+                                <div class="text-muted small">Ventas de Hoy</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <!-- Acciones de Administración -->
+        <div class="col-md-12 mb-4">
+            <div class="card card-flash border">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Acciones de Control</h5>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="/Admin/GestionarRestaurantes" class="btn btn-sm btn-delivery-primary px-3">Gestionar Restaurantes</a>
+                        <a href="/Admin/CreateRestaurant" class="btn btn-sm btn-outline-danger px-3">Nuevo Restaurante</a>
+                        <a href="/Admin/CreateProduct" class="btn btn-sm btn-outline-danger px-3">Nuevo Producto</a>
+                        <a href="/Admin/GestionarProductos" class="btn btn-sm btn-outline-danger px-3">Gestionar Productos</a>
+                        <a href="/Admin/GestionarCategorias" class="btn btn-sm btn-outline-danger px-3">Gestionar Categorías</a>
+                        <a href="/Admin/GestionarAdministradores" class="btn btn-sm btn-outline-danger px-3">Gestionar Administradores</a>
+                        <a href="/Admin/MonitorearPedidos" class="btn btn-sm btn-outline-danger px-3">Monitorear Pedidos</a>
+                        <a href="/Admin/GenerarReporte" class="btn btn-sm btn-outline-danger px-3">Generar Reporte de Ventas</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

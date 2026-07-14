@@ -1,0 +1,234 @@
+@model delivery_system_dotnet.Models.Order
+@using System.Globalization
+@{
+    ViewData["Title"] = $"Ruta del pedido #{Model.Id.Substring(0, 8)} - FlashBite";
+    var inv = CultureInfo.InvariantCulture;
+
+    string BadgeClase(string estado) => estado switch
+    {
+        "Entregado" => "badge-delivery-success",
+        "En Camino" or "Aceptado" or "Preparando" => "badge-delivery-info",
+        "Pendiente" or "PendienteRepartidor" => "badge-delivery-warning",
+        _ => "badge-delivery-danger"
+    };
+}
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+<style>
+    #map { width: 100%; height: 460px; display: block; }
+    .leaflet-container img { max-width: none !important; max-height: none !important; }
+    .leaflet-routing-container { display: none !important; }
+    path.leaflet-interactive { stroke: var(--fb-primary) !important; stroke-width: 6px !important; stroke-opacity: 0.85 !important; }
+</style>
+
+<div class="container mt-4 animate-fade-in">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h4 class="section-heading m-0">Ruta del pedido #@Model.Id.Substring(0, 8)</h4>
+        <a href="/Delivery/GestionarEntregas" class="btn btn-delivery-outline btn-sm">
+            <i data-lucide="arrow-left"></i> Volver a mis entregas
+        </a>
+    </div>
+
+    <div class="row g-3">
+        <!-- Panel de datos de la entrega -->
+        <div class="col-lg-4">
+            <div class="dashboard-card h-100">
+                <div class="dashboard-card-header d-flex justify-content-between align-items-center">
+                    <span>Detalles de la entrega</span>
+                    <span class="badge-delivery @BadgeClase(Model.Status)" id="estadoBadge">@Model.Status</span>
+                </div>
+                <div class="card-body p-3">
+                    <div class="mb-3">
+                        <div class="metric-text mb-1"><i data-lucide="store"></i> Recoger en</div>
+                        <div class="fw-bold">@(Model.Restaurant?.Name ?? "Restaurante")</div>
+                        <div class="text-muted small">@(Model.Restaurant?.Address ?? "—")</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="metric-text mb-1"><i data-lucide="map-pin"></i> Entregar a</div>
+                        <div class="fw-bold">@(Model.Client?.Name ?? "Cliente")</div>
+                        <div class="text-muted small">@Model.DestinyAddres</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="metric-text mb-1"><i data-lucide="dollar-sign"></i> Total del pedido</div>
+                        <div class="fw-bold" style="font-variant-numeric: tabular-nums;">$@Model.Total.ToString("F2")</div>
+                    </div>
+
+                    <hr />
+
+                    <!-- Acciones de estado -->
+                    @if (Model.Status == "Aceptado")
+                    {
+                        <form method="post" action="/Delivery/UpdateDeliveryStatus">
+                            <input type="hidden" name="orderId" value="@Model.Id" />
+                            <input type="hidden" name="newStatus" value="En Camino" />
+                            <button type="submit" class="btn btn-delivery-primary w-100">
+                                <i data-lucide="bike"></i> Marcar en camino
+                            </button>
+                        </form>
+                    }
+                    else if (Model.Status == "En Camino")
+                    {
+                        <form method="post" action="/Delivery/UpdateDeliveryStatus">
+                            <input type="hidden" name="orderId" value="@Model.Id" />
+                            <input type="hidden" name="newStatus" value="Entregado" />
+                            <button type="submit" class="btn btn-delivery-primary w-100">
+                                <i data-lucide="check-check"></i> Marcar entregado
+                            </button>
+                        </form>
+                    }
+                    else if (Model.Status == "PendienteRepartidor")
+                    {
+                        <form method="post" action="/Delivery/AceptarPedido">
+                            <input type="hidden" name="orderId" value="@Model.Id" />
+                            <button type="submit" class="btn btn-delivery-primary w-100">
+                                <i data-lucide="check"></i> Aceptar pedido
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-0">No hay acciones disponibles para el estado actual.</p>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Mapa -->
+        <div class="col-lg-8">
+            <div class="dashboard-card">
+                <div id="map"></div>
+            </div>
+            <p class="text-muted small" id="mapHint">Cargando el recorrido…</p>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+    <script>
+        const orderId = "@Model.Id";
+
+        // Geofence Imbabura: descarta NaN, ceros y coordenadas fuera de región.
+        function coordValida(lat, lng) {
+            const a = parseFloat(lat), b = parseFloat(lng);
+            if (isNaN(a) || isNaN(b) || a === 0 || b === 0) return false;
+            if (a < -5 || a > 5 || b < -85 || b > -75) return false;
+            return true;
+        }
+
+        const ibarra = { lat: 0.3517, lng: -78.1218 };
+
+        // Puntos reales desde la BD (cultura invariante).
+        const rRestLat = '@(Model.Restaurant != null ? Model.Restaurant.Latitude.ToString("G", inv) : "")';
+        const rRestLng = '@(Model.Restaurant != null ? Model.Restaurant.Longitude.ToString("G", inv) : "")';
+        const rDestLat = '@((Model.DestLatitude ?? (Model.ClienteLatitud != 0 ? Model.ClienteLatitud : (Model.Client != null ? Model.Client.Latitude ?? 0 : 0))).ToString("G", inv))';
+        const rDestLng = '@((Model.DestLongitude ?? (Model.ClienteLongitud != 0 ? Model.ClienteLongitud : (Model.Client != null ? Model.Client.Longitude ?? 0 : 0))).ToString("G", inv))';
+        const rCurLat = '@(Model.CurrentLatitude?.ToString("G", inv) ?? "")';
+        const rCurLng = '@(Model.CurrentLongitude?.ToString("G", inv) ?? "")';
+
+        const restLat = coordValida(rRestLat, rRestLng) ? parseFloat(rRestLat) : ibarra.lat;
+        const restLng = coordValida(rRestLat, rRestLng) ? parseFloat(rRestLng) : ibarra.lng;
+        const destLat = coordValida(rDestLat, rDestLng) ? parseFloat(rDestLat) : ibarra.lat;
+        const destLng = coordValida(rDestLat, rDestLng) ? parseFloat(rDestLng) : ibarra.lng;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            delete L.Icon.Default.prototype._getIconUrl;
+            L.Icon.Default.mergeOptions({
+                iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+                iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png'
+            });
+
+            const map = L.map('map').setView([destLat, destLng], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19, attribution: '© OpenStreetMap'
+            }).addTo(map);
+            setTimeout(() => map.invalidateSize(), 400);
+
+            // Marcadores fijos: recogida (restaurante) y destino (cliente).
+            const restIcon = L.divIcon({
+                html: '<div style="width:16px;height:16px;background:#12809c;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);"></div>',
+                className: '', iconSize: [16, 16], iconAnchor: [8, 8]
+            });
+            L.marker([restLat, restLng], { icon: restIcon }).addTo(map).bindPopup('<b>Recoger aquí</b><br>@(Model.Restaurant?.Name ?? "Restaurante")');
+            L.marker([destLat, destLng]).addTo(map).bindPopup('<b>Entregar aquí</b><br>@Html.Raw(Html.Encode(Model.DestinyAddres))').openPopup();
+
+            // Cámara pasiva mientras el repartidor manipula el mapa.
+            let userInteracting = false, interactionTimer = null;
+            const onStart = () => { userInteracting = true; if (interactionTimer) { clearTimeout(interactionTimer); interactionTimer = null; } };
+            const onEnd = () => { if (interactionTimer) clearTimeout(interactionTimer); interactionTimer = setTimeout(() => { userInteracting = false; }, 2000); };
+            map.on('dragstart zoomstart mousedown', onStart);
+            map.on('dragend zoomend mouseup', onEnd);
+
+            const riderIcon = L.divIcon({
+                html: '<div style="width:18px;height:18px;background:var(--fb-primary,#1a5cad);border:3px solid #fff;border-radius:50%;box-shadow:0 1px 6px rgba(0,0,0,.45);"></div>',
+                className: '', iconSize: [18, 18], iconAnchor: [9, 9]
+            });
+            let riderMarker = null, routingControl = null, fallbackLine = null, lastRoute = 0, lastLatLng = null;
+
+            function ensureRider(latlng) {
+                if (!riderMarker) riderMarker = L.marker(latlng, { icon: riderIcon }).addTo(map).bindPopup('Tú (repartidor)');
+                return riderMarker;
+            }
+            function ensureRoute(start) {
+                if (routingControl) return;
+                routingControl = L.Routing.control({
+                    waypoints: [L.latLng(start.lat, start.lng), L.latLng(destLat, destLng)],
+                    router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1', profile: 'car', useHints: false }),
+                    routeWhileDragging: false, addWaypoints: false, show: false,
+                    createMarker: () => null,
+                    lineOptions: { styles: [{ color: '#1a5cad', opacity: 0.85, weight: 6 }], extendToWaypoints: true, missingRouteTolerance: 0 }
+                }).addTo(map);
+                routingControl.on('routingerror', function () {
+                    if (fallbackLine) map.removeLayer(fallbackLine);
+                    const o = lastLatLng || start;
+                    fallbackLine = L.polyline([[o.lat, o.lng], [destLat, destLng]], { color: '#1a5cad', weight: 6, opacity: 0.85 }).addTo(map);
+                });
+            }
+
+            // Posición inicial conocida (si la hay).
+            if (coordValida(rCurLat, rCurLng)) {
+                const start = L.latLng(parseFloat(rCurLat), parseFloat(rCurLng));
+                ensureRider(start); ensureRoute(start);
+                document.getElementById('mapHint').innerText = 'Sigue la ruta marcada hasta el destino del cliente.';
+            } else {
+                map.fitBounds([[restLat, restLng], [destLat, destLng]], { padding: [40, 40] });
+                document.getElementById('mapHint').innerText = 'La ruta aparecerá cuando inicies el recorrido.';
+            }
+
+            // SignalR: misma posición en vivo que ve el cliente.
+            const connection = new signalR.HubConnectionBuilder()
+                .withUrl('/hubs/tracking').withAutomaticReconnect().build();
+
+            connection.on('ReceivePosition', function (lat, lng) {
+                if (!coordValida(lat, lng)) return;
+                const p = L.latLng(parseFloat(lat), parseFloat(lng));
+                lastLatLng = p;
+                ensureRider(p).setLatLng(p);
+                ensureRoute(p);
+                if (!userInteracting) map.panTo(p, { animate: true, duration: 0.8 });
+                const now = Date.now();
+                if (now - lastRoute > 5000 && routingControl) {
+                    routingControl.setWaypoints([p, L.latLng(destLat, destLng)]);
+                    lastRoute = now;
+                }
+                document.getElementById('mapHint').innerText = 'Sigue la ruta marcada hasta el destino del cliente.';
+            });
+
+            connection.on('ReceiveStatus', function (status) {
+                const badge = document.getElementById('estadoBadge');
+                if (badge) badge.innerText = status;
+                if (status === 'Entregado') {
+                    document.getElementById('mapHint').innerText = 'Pedido entregado. ¡Buen trabajo!';
+                }
+            });
+
+            connection.start()
+                .then(() => connection.invoke('JoinOrderTracking', orderId))
+                .catch(console.error);
+        });
+    </script>
+}

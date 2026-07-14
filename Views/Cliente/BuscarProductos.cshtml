@@ -1,0 +1,138 @@
+@model List<delivery_system_dotnet.Models.Products>
+@{
+    ViewData["Title"] = "Buscar Productos - FlashBite";
+    var cartCount = Context.Session.GetInt32("CartCount") ?? 0;
+
+    var productosAgrupados = Model?.GroupBy(p => p.Category ?? "Otros").OrderBy(g => g.Key).ToList() ?? new List<IGrouping<string, delivery_system_dotnet.Models.Products>>();
+}
+
+<div class="container mt-3 animate-fade-in">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h2 class="section-heading" style="margin-bottom: 8px;">Encuentra lo que te gusta</h2>
+            <p class="text-muted mb-0" style="padding-left: 16px;">Elige tus antojos del menu y agregalos al carrito.</p>
+        </div>
+        <a href="/Cliente/Carrito" class="btn btn-delivery-outline btn-sm">
+            Ver Carrito <span class="badge rounded-pill text-white ms-1" style="background: var(--fb-primary); font-size: 11px;">@cartCount</span>
+        </a>
+    </div>
+
+    <!-- Filtro de categorias -->
+    <div class="row mb-4">
+        <div class="col-md-12 d-flex flex-wrap justify-content-center gap-2">
+            <a href="/Cliente/BuscarProductos" class="btn btn-sm @(string.IsNullOrEmpty(ViewBag.Category) ? "btn-delivery-primary text-white" : "btn-light border text-dark") px-4 py-2 rounded-pill" style="font-weight: 700; font-size: 13px;">Todos</a>
+            @if (ViewBag.Categorias != null)
+            {
+                foreach (var cat in (IEnumerable<string>)ViewBag.Categorias)
+                {
+                    <a href="/Cliente/BuscarProductos?category=@Uri.EscapeDataString(cat)" class="btn btn-sm @(ViewBag.Category == cat ? "btn-delivery-primary text-white" : "btn-light border text-dark") px-4 py-2 rounded-pill" style="font-weight: 700; font-size: 13px;">@cat</a>
+                }
+            }
+        </div>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert border-0 rounded-3 text-center mb-4" style="background: #dcfce7; color: #15803d; font-weight: 600;">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert border-0 rounded-3 text-center mb-4" style="background: #fee2e2; color: #b91c1c; font-weight: 600;">@TempData["Error"]</div>
+    }
+
+    <!-- Barra de busqueda -->
+    <form method="get" action="/Cliente/BuscarProductos" class="row g-2 mb-5 justify-content-center">
+        <input type="hidden" name="category" value="@ViewBag.Category" />
+        <div class="col-md-7">
+            <div class="input-group search-bar-pill w-100">
+                <span class="input-group-text bg-light border-0 ps-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-search text-muted" viewBox="0 0 16 16">
+                      <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                    </svg>
+                </span>
+                <input type="text" name="search" class="form-control bg-light border-0 py-2" placeholder="Buscar plato por nombre..." value="@ViewBag.Search" />
+            </div>
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-delivery-primary w-100 py-2">Buscar</button>
+        </div>
+    </form>
+
+    <!-- Agrupacion de productos -->
+    @if (productosAgrupados.Any())
+    {
+        foreach (var grupo in productosAgrupados)
+        {
+            <div class="mb-5">
+                <h4 class="mb-3 font-title pb-2" style="border-bottom: 2px solid var(--fb-border-color); color: var(--fb-primary);">@grupo.Key</h4>
+                <div class="row g-4">
+                    @foreach (var item in grupo)
+                    {
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-2">
+                            <div class="card-product">
+                                <div class="product-img-wrapper" style="overflow: hidden;">
+                                    <img src="@item.ImagePath" 
+                                         class="card-img-top" 
+                                         alt="@item.Name" 
+                                         loading="lazy"
+                                         style="object-fit: cover; height: 180px; width: 100%; background-color: var(--fb-bg-light);"
+                                         onerror="this.style.display='none'" />
+                                </div>
+                                <div class="product-details">
+                                    <h6 class="product-title">@item.Name</h6>
+                                    <p class="text-muted small mb-1 flex-grow-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                                        @(string.IsNullOrEmpty(item.Description) ? "Delicioso plato preparado con los mejores ingredientes." : item.Description)
+                                    </p>
+                                    @if (item.Restaurant != null)
+                                    {
+                                        <p class="small fw-bold mb-2" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fb-primary);">
+                                            <a href="/Cliente/DetalleRestaurante?id=@item.Restaurant.Id" class="text-decoration-none" style="color: var(--fb-primary);">@item.Restaurant.Name</a>
+                                        </p>
+                                    }
+
+                                    <div class="mb-2 pt-2" style="border-top: 1px solid var(--fb-border-color);">
+                                        <span class="product-price">$@item.Price.ToString("F2")</span>
+                                        <div class="small mt-1">
+                                            <strong style="color: @(item.Available ? "#15803d" : "#b91c1c"); font-size: 12px;">
+                                                @(item.Available ? "Disponible" : "Agotado")
+                                            </strong>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-auto">
+                                        @if (item.Available)
+                                        {
+                                            <form method="post" action="/Cliente/AddToCart">
+                                                <input type="hidden" name="productId" value="@item.Id" />
+                                                <div class="mb-2 d-flex align-items-center justify-content-between gap-2">
+                                                    <span class="small text-muted" style="font-weight: 600;">Cant:</span>
+                                                    <input type="number" name="quantity" class="form-control form-control-sm text-center rounded-pill" value="1" min="1" style="width: 70px; border: 2px solid var(--fb-border-color);" />
+                                                </div>
+                                                <button type="submit" class="btn btn-delivery-primary btn-sm w-100" style="font-size: 13px;">Agregar al carrito</button>
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm w-100 rounded-pill" disabled style="background: #f1f5f9; color: var(--fb-muted-text); font-weight: 600;">Agotado</button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="col-12">
+            <div class="empty-state">
+                <h5>No se encontraron productos</h5>
+                <p>Intenta con otra busqueda o categoria diferente.</p>
+                <a href="/Cliente/BuscarProductos" class="btn btn-delivery-primary mt-3">Ver todos los productos</a>
+            </div>
+        </div>
+    }
+</div>

@@ -1,0 +1,48 @@
+@model List<string>
+@{
+    ViewData["Title"] = "Gestión de Categorías - FlashBite";
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="dashboard-header mb-4">
+        <h1 class="font-title text-danger mb-1">Gestión de Categorías</h1>
+        <p class="text-muted mb-0">Administra las agrupaciones de platos del menú y reordena la visualización del menú del cliente.</p>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success border-0 rounded-3 text-center mb-4">
+            @TempData["Message"]
+        </div>
+    }
+
+    <div class="card card-flash border">
+        <div class="card-body">
+            <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Categorías del Sistema</h5>
+            <div class="list-group mb-4">
+                @if (Model != null && Model.Any())
+                {
+                    foreach (var category in Model)
+                    {
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span><strong>@category</strong></span>
+                            <div class="d-flex gap-2">
+                                <form method="post" action="/Admin/DeleteCategory" class="d-inline">
+                                    <input type="hidden" name="category" value="@category" />
+                                    <button type="submit" class="btn btn-sm btn-danger py-1">Eliminar</button>
+                                </form>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <hr />
+
+            <form method="post" action="/Admin/ReorderList">
+                <input type="hidden" name="orderData" value="sorted" />
+                <button type="submit" class="btn btn-flashbite-primary btn-sm">Reordenar Lista de Categorías ↕️</button>
+            </form>
+        </div>
+    </div>
+</div>

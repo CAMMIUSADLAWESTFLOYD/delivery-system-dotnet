@@ -1,0 +1,199 @@
+@model List<delivery_system_dotnet.Models.Order>
+@{
+    ViewData["Title"] = "Historial de Pedidos - FlashBite";
+
+    string BadgeClase(string estado) => estado switch
+    {
+        "Entregado" => "badge-delivery-success",
+        "En Camino" or "Aceptado" or "Preparando" => "badge-delivery-info",
+        "Pendiente" or "PendienteRepartidor" => "badge-delivery-warning",
+        _ => "badge-delivery-danger"
+    };
+
+    string EstadoTexto(string estado) => estado switch
+    {
+        "PendienteRepartidor" => "Esperando repartidor",
+        _ => estado
+    };
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="dashboard-header mb-4">
+        <h1 class="font-title mb-1" style="font-size: 20px;">Mis Pedidos</h1>
+        <p class="text-muted mb-0">Sigue tus pedidos en tiempo real y califica al repartidor cuando te llegue.</p>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success mb-4">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger mb-4">@TempData["Error"]</div>
+    }
+
+    <div class="dashboard-card">
+        <div class="table-responsive">
+            <table class="table table-delivery align-middle m-0">
+                <thead>
+                    <tr>
+                        <th>Pedido</th>
+                        <th>Restaurante</th>
+                        <th>Destino</th>
+                        <th>Total</th>
+                        <th>Estado</th>
+                        <th>Fecha</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model != null && Model.Any())
+                    {
+                        foreach (var order in Model)
+                        {
+                            <tr>
+                                <td><strong>#@order.Id.Substring(0, 8)</strong></td>
+                                <td>@(order.Restaurant?.Name ?? "—")</td>
+                                <td class="text-muted" style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="@order.DestinyAddres">@order.DestinyAddres</td>
+                                <td style="font-variant-numeric: tabular-nums;">$@order.Total.ToString("F2")</td>
+                                <td><span class="badge-delivery @BadgeClase(order.Status)">@EstadoTexto(order.Status)</span></td>
+                                <td style="white-space: nowrap;">@order.DateOrder.ToString("g")</td>
+                                <td class="text-end" style="white-space: nowrap;">
+                                    @if (order.Status != "Entregado" && order.Status != "Cancelado")
+                                    {
+                                        <a href="/Cliente/SeguimientoPedido?orderId=@order.Id" class="btn btn-sm btn-delivery-outline">
+                                            <i data-lucide="map-pin"></i> Ver en mapa
+                                        </a>
+                                    }
+
+                                    @if (order.Status == "Pendiente")
+                                    {
+                                        <form method="post" action="/Cliente/CancelarPedido" class="d-inline">
+                                            <input type="hidden" name="orderId" value="@order.Id" />
+                                            <button type="submit" class="btn btn-sm btn-destructive"
+                                                    onsubmit="return confirm('¿Cancelar este pedido?')">Cancelar</button>
+                                        </form>
+                                        <form method="post" action="/Cliente/ElegirRepartidor" class="d-inline">
+                                            <input type="hidden" name="orderId" value="@order.Id" />
+                                            <div class="input-group input-group-sm" style="width: auto; display: inline-flex;">
+                                                <select name="deliveryDni" class="form-select form-select-sm" required style="max-width: 150px;">
+                                                    <option value="">Elegir repartidor…</option>
+                                                    @if (ViewBag.Repartidores != null)
+                                                    {
+                                                        foreach (var rep in (IEnumerable<delivery_system_dotnet.Models.Delivery>)ViewBag.Repartidores)
+                                                        {
+                                                            <option value="@rep.Dni">@rep.Name</option>
+                                                        }
+                                                    }
+                                                </select>
+                                                <button type="submit" class="btn btn-delivery-outline btn-sm">Asignar</button>
+                                            </div>
+                                        </form>
+                                    }
+
+                                    @if (order.Status == "Entregado")
+                                    {
+                                        if (order.Rating != null)
+                                        {
+                                            <span class="d-inline-flex align-items-center gap-1" title="Calificaste este pedido con @order.Rating de 5"
+                                                  style="color: var(--fb-warning); font-weight: 600;">
+                                                @for (int s = 1; s <= 5; s++)
+                                                {
+                                                    <i data-lucide="star" style="width:15px;height:15px;@(s <= order.Rating ? "fill:var(--fb-warning);" : "opacity:.3;")"></i>
+                                                }
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="btn btn-sm btn-delivery-primary" data-bs-toggle="modal" data-bs-target="#rateModal-@order.Id">
+                                                <i data-lucide="star"></i> Calificar repartidor
+                                            </button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty-state" style="border: none;">
+                                    <i data-lucide="receipt" class="empty-state-icon" style="width:32px;height:32px;"></i>
+                                    <h5>Aún no tienes pedidos</h5>
+                                    <p class="mb-0">Explora los restaurantes para hacer tu primer pedido.</p>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modales de calificación (uno por pedido entregado sin calificar) -->
+@if (Model != null)
+{
+    foreach (var order in Model.Where(o => o.Status == "Entregado" && o.Rating == null))
+    {
+        <div class="modal fade" id="rateModal-@order.Id" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post" action="/Cliente/CalificarServicio" class="rating-form">
+                        <input type="hidden" name="orderId" value="@order.Id" />
+                        <input type="hidden" name="rating" value="5" class="rating-value" />
+                        <div class="modal-header">
+                            <h5 class="modal-title font-title">Calificar al repartidor</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                        </div>
+                        <div class="modal-body text-center">
+                            <p class="text-muted mb-2">Pedido #@order.Id.Substring(0, 8)@(order.Delivery?.Name != null ? $" · {order.Delivery.Name}" : "")</p>
+                            <div class="star-picker d-inline-flex gap-1" style="cursor: pointer;">
+                                @for (int s = 1; s <= 5; s++)
+                                {
+                                    <i data-lucide="star" class="star-opt" data-value="@s" style="width:32px;height:32px;color:var(--fb-warning);fill:var(--fb-warning);"></i>
+                                }
+                            </div>
+                            <p class="mt-2 mb-0 fw-bold rating-label">5 - Excelente servicio</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-delivery-outline btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                            <button type="submit" class="btn btn-delivery-primary btn-sm">Enviar calificación</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@section Scripts {
+    <script>
+        // Selector de estrellas: al pasar/hacer clic marca el valor 1-5.
+        const etiquetas = { 1: '1 - Muy malo', 2: '2 - Malo', 3: '3 - Regular', 4: '4 - Muy bueno', 5: '5 - Excelente servicio' };
+        document.querySelectorAll('.rating-form').forEach(form => {
+            const stars = form.querySelectorAll('.star-opt');
+            const hidden = form.querySelector('.rating-value');
+            const label = form.querySelector('.rating-label');
+            function pintar(valor) {
+                stars.forEach(st => {
+                    const v = parseInt(st.dataset.value, 10);
+                    st.style.opacity = v <= valor ? '1' : '0.3';
+                });
+                if (label) label.textContent = etiquetas[valor];
+            }
+            stars.forEach(st => {
+                st.addEventListener('mouseenter', () => pintar(parseInt(st.dataset.value, 10)));
+                st.addEventListener('click', () => {
+                    const v = parseInt(st.dataset.value, 10);
+                    hidden.value = v;
+                    pintar(v);
+                });
+            });
+            const picker = form.querySelector('.star-picker');
+            if (picker) picker.addEventListener('mouseleave', () => pintar(parseInt(hidden.value, 10)));
+            pintar(parseInt(hidden.value, 10));
+        });
+    </script>
+}

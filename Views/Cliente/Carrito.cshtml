@@ -1,0 +1,308 @@
+@model delivery_system_dotnet.Models.CartViewModel
+@{
+    ViewData["Title"] = "Mi Carrito - FlashBite";
+    var address = User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.StreetAddress)?.Value;
+    double? restLat = ViewBag.RestLat as double?;
+    double? restLng = ViewBag.RestLng as double?;
+    string restName = ViewBag.RestName as string ?? "Restaurante";
+}
+
+<div class="container mt-3 animate-fade-in">
+    <div class="mb-4">
+        <h2 class="font-title mb-1">Mi Carrito de Compras</h2>
+        <p class="text-muted mb-0">Revisa tus productos, fija tu punto de entrega y confirma.</p>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success border-0 rounded-3 text-center mb-4">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger border-0 rounded-3 text-center mb-4">@TempData["Error"]</div>
+    }
+
+    @if (Model == null || !Model.Items.Any())
+    {
+        <div class="dashboard-card p-5 text-center">
+            <h5 class="font-title mt-2">Tu carrito está vacío</h5>
+            <p class="text-muted">Agrega deliciosos platos de nuestro menú.</p>
+            <a href="/Cliente/BuscarProductos" class="btn btn-delivery-primary rounded-pill px-4 mt-2">Explorar el menú</a>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <!-- Columna izquierda: productos + selector de punto de entrega -->
+            <div class="col-md-8 mb-4">
+                <div class="dashboard-card p-3 mb-4">
+                    <h5 class="font-title text-danger mb-3 border-bottom pb-2">Productos a comprar</h5>
+
+                    @foreach (var item in Model.Items)
+                    {
+                        <div class="cart-item-card">
+                            <div class="d-flex align-items-center">
+                                <img src="/images/products/hamburguesas.jpg" alt="@item.ProductName" class="cart-item-logo" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 15px;" />
+                                <div>
+                                    <h6 class="font-title mb-1">@item.ProductName</h6>
+                                    <span class="text-muted small">$@item.Price.ToString("F2") c/u · @(item.Available ? "Disponible" : "Agotado")</span>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-3">
+                                <form method="post" action="/Cliente/UpdateCartItem" class="d-flex align-items-center gap-2">
+                                    <input type="hidden" name="productId" value="@item.ProductId" />
+                                    <input type="number" name="quantity" value="@item.Quantity" min="0"
+                                           class="form-control form-control-sm text-center" style="width: 70px;" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger py-1" title="Actualizar cantidad">Actualizar</button>
+                                </form>
+                                <h6 class="font-title mb-0 text-danger" style="min-width: 70px; text-align:right;">$@item.SubTotal.ToString("F2")</h6>
+                                <form method="post" action="/Cliente/RemoveFromCart">
+                                    <input type="hidden" name="productId" value="@item.ProductId" />
+                                    <button type="submit" class="btn btn-sm btn-link text-danger" title="Eliminar">Eliminar</button>
+                                </form>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <!-- ================= PinSelector: punto de entrega ================= -->
+                <div class="dashboard-card p-3">
+                    <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                        <h5 class="font-title text-danger mb-0">Punto de entrega</h5>
+                        <button type="button" id="pinHelpBtn" class="btn btn-outline-danger btn-sm">Cómo funciona</button>
+                    </div>
+
+                    <!-- Contenedor del mapa con pin central fijo -->
+                    <div id="pinWrap" style="position:relative; border-radius:12px; overflow:hidden; border:1px solid #eee;">
+                        <div id="pinMap" style="height:340px; width:100%;"></div>
+
+                        <!-- Pin central FIJO: no es un marcador del mapa, es una capa HTML
+                             anclada al centro del contenedor. El mapa se mueve debajo;
+                             la punta del pin señala siempre map.getCenter(). -->
+                        <div id="pinCenter" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-100%); z-index:700; pointer-events:none; transition:transform .15s ease;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 24 24" fill="#e63946" stroke="#ffffff" stroke-width="1.2" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,.4));">
+                                <path d="M12 0C7.31 0 3.5 3.81 3.5 8.5c0 6.06 7.6 14.6 7.92 14.96a.78.78 0 0 0 1.16 0c.32-.36 7.92-8.9 7.92-14.96C20.5 3.81 16.69 0 12 0zm0 12a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
+                            </svg>
+                        </div>
+                        <!-- Punto exacto bajo la punta del pin -->
+                        <div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:699; pointer-events:none; width:7px; height:7px; border-radius:50%; background:rgba(0,0,0,.35);"></div>
+
+                        <!-- Overlay de instrucciones (modal in-app: se cierra, nunca
+                             recarga la página ni abre ventanas nuevas) -->
+                        <div id="pinOverlay" style="position:absolute; inset:0; z-index:1200; background:rgba(33,37,41,.55); display:flex; align-items:center; justify-content:center; padding:16px;">
+                            <div class="bg-white rounded-3 shadow p-4 text-center" style="max-width:340px;">
+                                <h6 class="font-title text-danger mb-2">Fija tu punto de entrega</h6>
+                                <p class="text-muted small mb-3">
+                                    Mueve el mapa hasta que el pin quede exactamente sobre tu puerta.
+                                    La ruta del repartidor usará ese punto, sin depender del nombre de la calle.
+                                </p>
+                                <button type="button" id="pinStart" class="btn btn-delivery-primary rounded-pill px-4 w-100">Entendido, elegir punto</button>
+                                <div class="form-text small mt-2">Si permites la ubicación, el mapa se centrará donde estás.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2">
+                        <div id="pinStatus" class="small text-muted">Punto de entrega sin fijar.</div>
+                        <div id="pinRouteInfo" class="small text-muted"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resumen de pago y envío -->
+            <div class="col-md-4">
+                <div class="dashboard-card p-4">
+                    <h5 class="font-title text-danger mb-3 border-bottom pb-2">Resumen de Pago</h5>
+
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">Subtotal:</span>
+                        <strong class="font-title">$@Model.Subtotal.ToString("F2")</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">Costo de Envío:</span>
+                        <strong class="font-title text-success">$@Model.DeliveryFee.ToString("F2")</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">IVA (@(delivery_system_dotnet.Interfaces.ICalculate.iva)%):</span>
+                        <strong class="font-title">$@Model.Iva.ToString("F2")</strong>
+                    </div>
+                    <hr />
+                    <div class="d-flex justify-content-between mb-4 align-items-center">
+                        <span class="h5 m-0 font-weight-bold">Total:</span>
+                        <span class="h4 text-danger font-title m-0"><strong>$@Model.Total.ToString("F2")</strong></span>
+                    </div>
+
+                    <form method="post" action="/Cliente/Checkout" id="checkoutForm">
+                        <div class="mb-3">
+                            <label class="form-label font-weight-bold text-dark mb-2">Dirección de Entrega (referencia)</label>
+                            <input type="text" name="destinyAddres" class="form-control auth-pill-input mb-2" placeholder="Ej: Calle Principal 123" required value="@address" />
+
+                            <label class="form-label font-weight-bold text-dark mb-2 mt-2">Seleccionar Repartidor</label>
+                            <select name="deliveryDni" class="form-select auth-pill-input" required>
+                                <option value="">-- Elige un repartidor disponible --</option>
+                                @if (ViewBag.Repartidores != null)
+                                {
+                                    foreach (var rep in (IEnumerable<delivery_system_dotnet.Models.Delivery>)ViewBag.Repartidores)
+                                    {
+                                        <option value="@rep.Dni">@rep.Name (@rep.TypeVehicle)</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Coordenadas capturadas por el pin central (map.getCenter()).
+                             Vacías hasta que el usuario fije el punto: el botón permanece
+                             bloqueado mientras no exista una coordenada válida. -->
+                        <input type="hidden" id="ClienteLatitud" name="ClienteLatitud" value="" />
+                        <input type="hidden" id="ClienteLongitud" name="ClienteLongitud" value="" />
+
+                        <button type="submit" id="btnConfirmarPedido" class="btn btn-delivery-primary w-100 btn-lg rounded-pill py-3 font-weight-bold" disabled>
+                            Fija tu punto de entrega en el mapa
+                        </button>
+                    </form>
+                    <a href="/Cliente/BuscarProductos" class="btn btn-link btn-sm text-danger w-100 mt-2 text-decoration-none">← Seguir comprando</a>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    @if (Model != null && Model.Items.Any())
+    {
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+        <style>
+            /* El panel de itinerario de Leaflet Routing Machine no se usa:
+               la ruta se dibuja sobre el mapa y el resumen se muestra aparte. */
+            .leaflet-routing-container { display: none; }
+            /* Pin "levantado" mientras el usuario mueve el mapa */
+            #pinCenter.lift { transform: translate(-50%, -118%); }
+        </style>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+        <script>
+            (function () {
+                // ---------- Configuración ----------
+                var IBARRA = [0.3517, -78.1223];      // vista inicial por defecto (nunca Quito)
+                var REST = @((restLat != null && restLng != null)
+                                ? $"[{restLat?.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {restLng?.ToString(System.Globalization.CultureInfo.InvariantCulture)}]"
+                                : "null");            // origen: restaurante del carrito
+                var REST_NAME = '@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(restName))';
+
+                var latInput = document.getElementById('ClienteLatitud');
+                var lngInput = document.getElementById('ClienteLongitud');
+                var btnConfirm = document.getElementById('btnConfirmarPedido');
+                var statusEl = document.getElementById('pinStatus');
+                var routeInfoEl = document.getElementById('pinRouteInfo');
+                var overlay = document.getElementById('pinOverlay');
+                var pinEl = document.getElementById('pinCenter');
+
+                // ---------- Mapa (siempre con vista válida) ----------
+                var map = L.map('pinMap').setView(REST || IBARRA, 15);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19, attribution: '&copy; OpenStreetMap'
+                }).addTo(map);
+
+                if (REST) {
+                    L.marker(REST).addTo(map).bindPopup(REST_NAME);
+                }
+
+                // ---------- Ruta de alta precisión (waypoints manuales) ----------
+                // El motor recibe EXCLUSIVAMENTE coordenadas L.latLng (nunca strings
+                // de dirección): no hay geocoder configurado, por lo que es imposible
+                // que "busque" nombres de calles. El destino es el punto del pin.
+                var routing = null;
+                function updateRoute(lat, lng) {
+                    if (!REST || !window.L || !L.Routing) return;
+                    var wps = [L.latLng(REST[0], REST[1]), L.latLng(lat, lng)]; // coordenadas puras
+                    if (!routing) {
+                        routing = L.Routing.control({
+                            waypoints: wps,
+                            router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+                            addWaypoints: false,
+                            draggableWaypoints: false,
+                            routeWhileDragging: false,
+                            fitSelectedRoutes: false,
+                            show: false,
+                            createMarker: function () { return null; },   // los marcadores los maneja la vista
+                            lineOptions: { styles: [{ color: '#e63946', weight: 5, opacity: 0.75 }], extendToWaypoints: true, missingRouteTolerance: 20 }
+                        }).addTo(map);
+                        routing.on('routesfound', function (e) {
+                            var r = e.routes[0].summary;
+                            routeInfoEl.textContent = 'Ruta: ' + (r.totalDistance / 1000).toFixed(2) + ' km · ' + Math.max(1, Math.round(r.totalTime / 60)) + ' min aprox.';
+                        });
+                        routing.on('routingerror', function () {
+                            // La ruta es solo una previsualización: si el servicio externo
+                            // falla, la coordenada capturada sigue siendo válida.
+                            routeInfoEl.textContent = 'Previsualización de ruta no disponible.';
+                        });
+                    } else {
+                        routing.setWaypoints(wps);
+                    }
+                }
+                var routeTimer = null;
+                function updateRouteDebounced(lat, lng) {
+                    clearTimeout(routeTimer);
+                    routeTimer = setTimeout(function () { updateRoute(lat, lng); }, 500);
+                }
+
+                // ---------- Captura del pin central ----------
+                var selectionEnabled = false;
+
+                function capture() {
+                    var c = map.getCenter();   // la punta del pin señala el centro exacto
+                    latInput.value = c.lat.toFixed(6);
+                    lngInput.value = c.lng.toFixed(6);
+                    btnConfirm.disabled = false;
+                    btnConfirm.textContent = 'Confirmar Pedido';
+                    statusEl.textContent = 'Punto fijado: ' + c.lat.toFixed(5) + ', ' + c.lng.toFixed(5);
+                    updateRouteDebounced(c.lat, c.lng);
+                }
+
+                map.on('movestart', function () {
+                    pinEl.classList.add('lift');
+                    if (selectionEnabled) {
+                        statusEl.textContent = 'Suelta el mapa para fijar el punto…';
+                    }
+                });
+                map.on('moveend', function () {
+                    pinEl.classList.remove('lift');
+                    if (selectionEnabled) capture();
+                });
+
+                // ---------- Overlay de instrucciones (in-app, sin ventanas nuevas) ----------
+                function startSelection() {
+                    overlay.style.display = 'none';
+                    selectionEnabled = true;
+                    statusEl.textContent = 'Mueve el mapa hasta dejar el pin sobre tu puerta.';
+                    // Geolocalización: si el usuario la permite, el mapa se centra en su
+                    // posición real (el setView dispara moveend y captura el punto).
+                    // Si la deniega, el mapa permanece activo centrado en Ibarra.
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(function (pos) {
+                            if (isFinite(pos.coords.latitude) && isFinite(pos.coords.longitude)) {
+                                map.setView([pos.coords.latitude, pos.coords.longitude], 17);
+                            }
+                        }, function () { /* denegado: se mantiene la vista actual */ },
+                        { enableHighAccuracy: true, timeout: 10000 });
+                    }
+                }
+                document.getElementById('pinStart').addEventListener('click', startSelection);
+                document.getElementById('pinHelpBtn').addEventListener('click', function () {
+                    overlay.style.display = 'flex';   // reabrir instrucciones sin recargar
+                });
+
+                // ---------- Blindaje del formulario ----------
+                document.getElementById('checkoutForm').addEventListener('submit', function (e) {
+                    var lat = parseFloat(latInput.value), lng = parseFloat(lngInput.value);
+                    if (!isFinite(lat) || !isFinite(lng) || lat === 0 || lng === 0) {
+                        e.preventDefault();
+                        statusEl.textContent = 'Debes fijar el punto de entrega en el mapa antes de confirmar.';
+                        overlay.style.display = 'flex';
+                    }
+                });
+            })();
+        </script>
+    }
+}

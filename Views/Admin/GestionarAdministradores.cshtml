@@ -1,0 +1,208 @@
+@model List<delivery_system_dotnet.Models.AdminItemViewModel>
+@{
+    ViewData["Title"] = "Gestión de Administradores - FlashBite";
+    var currentDni = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="dashboard-header d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h1 class="font-title text-danger mb-1">Gestión de Administradores</h1>
+            <p class="text-muted mb-0">Crea, edita o desactiva administradores. Solo disponible desde el panel.</p>
+        </div>
+        <a href="/Admin/Dashboard" class="btn btn-delivery-outline btn-sm">← Volver al panel</a>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success border-0 rounded-3 text-center mb-4">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger border-0 rounded-3 text-center mb-4">@TempData["Error"]</div>
+    }
+
+    <div class="row">
+        <!-- Crear administrador -->
+        <div class="col-lg-4 mb-4">
+            <div class="card card-flash border h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Nuevo Administrador</h5>
+                    <form method="post" action="/Admin/CrearAdministrador">
+                        <div class="mb-2">
+                            <label class="form-label small">DNI / Cédula</label>
+                            <input type="text" class="form-control form-control-sm" name="Dni" required placeholder="12345678C" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">Nombre Completo</label>
+                            <input type="text" class="form-control form-control-sm" name="Name" required placeholder="Nombre Apellido" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">Correo electrónico</label>
+                            <input type="email" class="form-control form-control-sm" name="Mail" required placeholder="correo@ejemplo.com" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">Contraseña</label>
+                            <input type="password" class="form-control form-control-sm" name="password" required placeholder="Mínimo 6 caracteres" />
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6 mb-2">
+                                <label class="form-label small">Teléfono</label>
+                                <input type="text" class="form-control form-control-sm" name="Phone" required placeholder="09999..." />
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label small">Fecha Nac.</label>
+                                <input type="date" class="form-control form-control-sm" name="DateBirth" required />
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">Dirección</label>
+                            <input type="text" class="form-control form-control-sm" name="Address" required placeholder="Dirección de oficina" />
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6 mb-2">
+                                <label class="form-label small">Sucursal</label>
+                                <input type="text" class="form-control form-control-sm" name="Succursal" required placeholder="Sucursal" />
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label small">Rol / Permiso</label>
+                                <input type="text" class="form-control form-control-sm" name="Rol" value="Admin" required />
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6 mb-3">
+                                <label class="form-label small">Salario</label>
+                                <input type="number" step="0.01" class="form-control form-control-sm" name="Salary" value="2500" required />
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label small">Género</label>
+                                <select class="form-select form-select-sm" name="Gender" required>
+                                    <option value="true">Masculino</option>
+                                    <option value="false">Femenino</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-flashbite-primary w-100">Crear Administrador</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Listado de administradores -->
+        <div class="col-lg-8 mb-4">
+            <div class="card card-flash border">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Administradores registrados</h5>
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Correo</th>
+                                    <th>Rol</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in Model)
+                                {
+                                    var a = item.Admin;
+                                    <tr>
+                                        <td><strong>@a.Name</strong><div class="text-muted small">@a.Dni</div></td>
+                                        <td>@a.Mail</td>
+                                        <td><span class="badge bg-danger text-white">@a.Rol</span></td>
+                                        <td>
+                                            @if (item.Activo)
+                                            {
+                                                <span class="badge bg-success">Activo</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary">Inactivo</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <div class="d-flex gap-2 flex-wrap">
+                                                <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#editAdmin-@a.Dni">Editar</button>
+                                                @if (a.Dni != currentDni)
+                                                {
+                                                    <form method="post" action="/Admin/CambiarEstadoAdministrador">
+                                                        <input type="hidden" name="dni" value="@a.Dni" />
+                                                        <input type="hidden" name="activar" value="@((!item.Activo).ToString().ToLower())" />
+                                                        <button type="submit" class="btn btn-sm @(item.Activo ? "btn-secondary" : "btn-success")">
+                                                            @(item.Activo ? "Desactivar" : "Activar")
+                                                        </button>
+                                                    </form>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-info align-self-center">Tú</span>
+                                                }
+                                            </div>
+
+                                            <!-- Modal Editar -->
+                                            <div class="modal fade" id="editAdmin-@a.Dni" tabindex="-1" aria-hidden="true">
+                                                <div class="modal-dialog">
+                                                    <div class="modal-content">
+                                                        <form method="post" action="/Admin/EditarAdministrador">
+                                                            <input type="hidden" name="dni" value="@a.Dni" />
+                                                            <div class="modal-header">
+                                                                <h5 class="modal-title font-title text-danger">Editar @a.Name</h5>
+                                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                            </div>
+                                                            <div class="modal-body text-start">
+                                                                <div class="mb-2">
+                                                                    <label class="form-label small">Nombre</label>
+                                                                    <input type="text" class="form-control form-control-sm" name="Name" value="@a.Name" required />
+                                                                </div>
+                                                                <div class="mb-2">
+                                                                    <label class="form-label small">Correo</label>
+                                                                    <input type="email" class="form-control form-control-sm" name="Mail" value="@a.Mail" required />
+                                                                </div>
+                                                                <div class="mb-2">
+                                                                    <label class="form-label small">Teléfono</label>
+                                                                    <input type="text" class="form-control form-control-sm" name="Phone" value="@a.Phone" required />
+                                                                </div>
+                                                                <div class="row g-2">
+                                                                    <div class="col-6 mb-2">
+                                                                        <label class="form-label small">Sucursal</label>
+                                                                        <input type="text" class="form-control form-control-sm" name="Succursal" value="@a.Succursal" required />
+                                                                    </div>
+                                                                    <div class="col-6 mb-2">
+                                                                        <label class="form-label small">Salario</label>
+                                                                        <input type="number" step="0.01" class="form-control form-control-sm" name="Salary" value="@a.Salary" required />
+                                                                    </div>
+                                                                </div>
+                                                                <div class="mb-2">
+                                                                    <label class="form-label small">Fecha de Nacimiento</label>
+                                                                    <input type="date" class="form-control form-control-sm" name="DateBirth" value="@a.DateBirth.ToString("yyyy-MM-dd")" required />
+                                                                </div>
+                                                                <div class="mb-2">
+                                                                    <label class="form-label small">Género</label>
+                                                                    <select class="form-select form-select-sm" name="Gender" required>
+                                                                        <option value="true" selected="@(a.Gender)">Masculino</option>
+                                                                        <option value="false" selected="@(!a.Gender)">Femenino</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <div class="modal-footer">
+                                                                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                                                                <button type="submit" class="btn btn-danger btn-sm">Guardar cambios</button>
+                                                            </div>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-muted small mb-0">Nota: el registro público de administradores está deshabilitado. Solo se pueden crear desde este panel.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

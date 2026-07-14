@@ -1,0 +1,118 @@
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Http
+<nav class="navbar navbar-expand-lg navbar-delivery mb-4">
+    <div class="container">
+        <!-- Logo FlashBite -->
+        <a class="navbar-brand-delivery d-flex align-items-center font-title text-decoration-none" href="/">
+            <span class="brand-bolt"><i data-lucide="zap"></i></span>
+            <strong>FlashBite</strong>
+        </a>
+
+        <!-- Barra de búsqueda (para Clientes logueados) -->
+        @if (User.Identity != null && User.Identity.IsAuthenticated && User.IsInRole("Client"))
+        {
+            <form class="d-none d-lg-flex mx-auto w-50" method="get" action="/Cliente/BuscarProductos">
+                <div class="input-group search-bar-pill">
+                    <span class="input-group-text"><i data-lucide="search"></i></span>
+                    <input class="form-control" type="text" name="search" placeholder="Buscar productos o restaurantes" aria-label="Buscar" value="@Context.Request.Query["search"]">
+                </div>
+            </form>
+        }
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse"
+                aria-controls="navbarCollapse" aria-expanded="false" aria-label="Abrir navegación">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarCollapse">
+            @{
+                var navRole = User.Identity != null && User.Identity.IsAuthenticated
+                    ? User.FindFirst(ClaimTypes.Role)?.Value
+                    : null;
+                var currentPath = Context.Request.Path.Value ?? "";
+            }
+
+            <!-- Navegación principal según el rol -->
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                @if (navRole == "Client")
+                {
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Cliente/Dashboard") ? "active" : "")" href="/Cliente/Dashboard">Inicio</a></li>
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Cliente/BuscarRestaurantes") ? "active" : "")" href="/Cliente/BuscarRestaurantes">Restaurantes</a></li>
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Cliente/HistorialPedidos") ? "active" : "")" href="/Cliente/HistorialPedidos">Mis pedidos</a></li>
+                }
+                else if (navRole == "Delivery")
+                {
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Delivery/Dashboard") ? "active" : "")" href="/Delivery/Dashboard">Inicio</a></li>
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Delivery/GestionarEntregas") ? "active" : "")" href="/Delivery/GestionarEntregas">Mis entregas</a></li>
+                }
+                else if (navRole == "Admin")
+                {
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Admin/Dashboard") ? "active" : "")" href="/Admin/Dashboard">Panel</a></li>
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Admin/GestionarRestaurantes") || currentPath.StartsWith("/Admin/CreateRestaurant") || currentPath.StartsWith("/Admin/EditRestaurant") ? "active" : "")" href="/Admin/GestionarRestaurantes">Restaurantes</a></li>
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Admin/GestionarProductos") || currentPath.StartsWith("/Admin/CreateProduct") ? "active" : "")" href="/Admin/GestionarProductos">Productos</a></li>
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Admin/MonitorearPedidos") ? "active" : "")" href="/Admin/MonitorearPedidos">Pedidos</a></li>
+                }
+                else
+                {
+                    <li class="nav-item"><a class="nav-link" href="/">Inicio</a></li>
+                }
+            </ul>
+
+            <!-- Sección de usuario y carrito -->
+            <div class="d-flex align-items-center gap-3">
+                @if (User.Identity != null && User.Identity.IsAuthenticated)
+                {
+                    var name = User.Identity.Name;
+
+                    <!-- Carrito (solo clientes) -->
+                    @if (navRole == "Client")
+                    {
+                        var cartCount = Context.Session.GetInt32("CartCount") ?? 0;
+                        <a class="navbar-icon-btn" href="/Cliente/Carrito" title="Ver carrito">
+                            <i data-lucide="shopping-cart"></i>
+                            @if (cartCount > 0)
+                            {
+                                <span class="badge">@cartCount</span>
+                            }
+                        </a>
+                    }
+
+                    <!-- Menú Mi cuenta -->
+                    <div class="dropdown">
+                        <button class="btn btn-navbar-ghost dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i data-lucide="user"></i> Mi cuenta
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">@name</h6></li>
+                            @if (navRole == "Client")
+                            {
+                                <li><a class="dropdown-item" href="/Cliente/Perfil">Mi perfil</a></li>
+                                <li><a class="dropdown-item" href="/Cliente/Perfil#configuracion">Configuración</a></li>
+                                <li><a class="dropdown-item" href="/Cliente/HistorialPedidos">Historial de pedidos</a></li>
+                            }
+                            else if (navRole == "Delivery")
+                            {
+                                <li><a class="dropdown-item" href="/Delivery/Perfil">Mi perfil</a></li>
+                                <li><a class="dropdown-item" href="/Delivery/Perfil#configuracion">Configuración</a></li>
+                                <li><a class="dropdown-item" href="/Delivery/HistorialRutas">Historial de entregas</a></li>
+                            }
+                            else if (navRole == "Admin")
+                            {
+                                <li><a class="dropdown-item" href="/Admin/Perfil">Mi perfil</a></li>
+                                <li><a class="dropdown-item" href="/Admin/Perfil#configuracion">Configuración</a></li>
+                                <li><a class="dropdown-item" href="/Admin/GestionarAdministradores">Gestión de administradores</a></li>
+                            }
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="/Auth/Logout">Cerrar sesión</a></li>
+                        </ul>
+                    </div>
+                }
+                else
+                {
+                    <a class="btn btn-navbar-ghost" href="/Auth/Login">Iniciar sesión</a>
+                    <a class="btn btn-delivery-primary btn-sm px-3" href="/Auth/Registro">Registrarse</a>
+                }
+            </div>
+        </div>
+    </div>
+</nav>

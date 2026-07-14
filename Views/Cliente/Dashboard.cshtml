@@ -1,0 +1,204 @@
+@inject delivery_system_dotnet.Data.ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@{
+    ViewData["Title"] = "FlashBite - Inicio";
+    
+    var restaurantes = DbContext.Restaurants.Where(r => r.IsActive).Take(6).ToList();
+    var productosPopulares = DbContext.Products.Include(p => p.Restaurant).Where(p => p.Available).Take(8).ToList();
+}
+
+<div class="container mt-3 animate-fade-in">
+    <!-- 1. Banner de Promociones -->
+    <div class="hero-promo mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <h2>Envio sin costo en tu primer pedido</h2>
+            <p class="mb-0">Realiza tu pedido y disfruta de nuestras promociones exclusivas.</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+            <a href="/Cliente/BuscarProductos" class="btn btn-white-delivery">Pedir ahora</a>
+            <a href="/Cliente/BuscarRestaurantes" class="btn btn-white-delivery">Restaurantes</a>
+            <a href="/Cliente/BuscarProductos" class="btn btn-white-delivery">Buscar productos</a>
+            <button type="button" id="btnCompartirUbicacion" class="btn btn-white-delivery">Compartir ubicacion</button>
+        </div>
+    </div>
+    <div id="ubicacionDashMsg" class="small text-muted mb-3"></div>
+
+    <!-- 2. Categorias -->
+    <h4 class="section-heading">Categorias</h4>
+    <div class="row g-3 mb-5 text-center">
+        <div class="col-6 col-sm-4 col-md-2">
+            <a href="/Cliente/BuscarProductos?category=Mariscos" class="category-card">
+                <span class="category-name">Mariscos</span>
+            </a>
+        </div>
+        <div class="col-6 col-sm-4 col-md-2">
+            <a href="/Cliente/BuscarProductos?category=Pizzas" class="category-card">
+                <span class="category-name">Pizzas</span>
+            </a>
+        </div>
+        <div class="col-6 col-sm-4 col-md-2">
+            <a href="/Cliente/BuscarProductos?category=Pollo+a+la+Brasa" class="category-card">
+                <span class="category-name">Pollo</span>
+            </a>
+        </div>
+        <div class="col-6 col-sm-4 col-md-2">
+            <a href="/Cliente/BuscarProductos?category=Asados" class="category-card">
+                <span class="category-name">Asados</span>
+            </a>
+        </div>
+        <div class="col-6 col-sm-4 col-md-2">
+            <a href="/Cliente/BuscarProductos?category=Postres" class="category-card">
+                <span class="category-name">Postres</span>
+            </a>
+        </div>
+        <div class="col-6 col-sm-4 col-md-2">
+            <a href="/Cliente/BuscarProductos" class="category-card">
+                <span class="category-name">Ver todo</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- 3. Restaurantes Populares -->
+    <h4 class="section-heading">Restaurantes de Ibarra</h4>
+    <div class="row g-4 mb-5">
+        @if (restaurantes.Any())
+        {
+            foreach (var rest in restaurantes)
+            {
+                <div class="col-md-4 col-sm-6">
+                    <a href="/Cliente/DetalleRestaurante?id=@rest.Id" class="restaurant-card text-decoration-none">
+                        <div class="restaurant-img-wrapper">
+                            <img src="@rest.ImagePath" 
+                                 class="restaurant-logo" 
+                                 alt="@rest.Name"
+                                 loading="lazy"
+                                 onerror="this.style.display='none'" />
+                        </div>
+                        <div class="restaurant-info">
+                            <h6 class="font-title mb-1">@rest.Name</h6>
+                            <p class="text-muted small mb-1">@rest.Address</p>
+                            <p class="text-muted small mb-2" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">@rest.Description</p>
+                            <div class="d-flex justify-content-between align-items-center mt-auto pt-2" style="border-top: 1px solid var(--fb-border-color);">
+                                <span class="restaurant-rating">4.9 <span class="text-muted" style="font-weight: 500; font-size: 12px;">(500+)</span></span>
+                                <span class="btn btn-sm btn-delivery-outline" style="font-size: 12px; padding: 5px 14px;">Ver Menu</span>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="col-12">
+                <div class="empty-state">
+                    <h5>No hay restaurantes disponibles</h5>
+                    <p>Pronto tendremos restaurantes cerca de ti.</p>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- 4. Productos Recomendados -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="section-heading m-0">Menu Destacado</h4>
+        <a href="/Cliente/BuscarProductos" class="btn btn-delivery-outline btn-sm">Ver todo</a>
+    </div>
+
+    @{
+        var productosAgrupados = productosPopulares
+            .GroupBy(p => p.Category ?? "Otros")
+            .OrderBy(g => g.Key)
+            .ToList();
+    }
+
+    @if (productosAgrupados.Any())
+    {
+        foreach (var grupo in productosAgrupados)
+        {
+            <h5 class="font-title text-dark mt-4 mb-3 pb-2" style="border-bottom: 2px solid var(--fb-border-color);">@grupo.Key</h5>
+            <div class="row g-4">
+                @foreach (var item in grupo)
+                {
+                    <div class="col-lg-3 col-md-4 col-sm-6 mb-2">
+                        <div class="card-product">
+                            <div class="product-img-wrapper" style="overflow: hidden;">
+                                <img src="@item.ImagePath" 
+                                     class="card-img-top" 
+                                     alt="@item.Name" 
+                                     loading="lazy"
+                                     style="object-fit: cover; height: 180px; width: 100%; background-color: var(--fb-bg-light);"
+                                     onerror="this.style.display='none'" />
+                            </div>
+                            <div class="product-details">
+                                <h6 class="product-title">@item.Name</h6>
+                                <p class="text-muted small mb-1 flex-grow-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">@item.Description</p>
+                                @if (item.Restaurant != null)
+                                {
+                                    <p class="small fw-bold mb-2" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fb-primary);">
+                                        <a href="/Cliente/DetalleRestaurante?id=@item.Restaurant.Id" class="text-decoration-none" style="color: var(--fb-primary);">@item.Restaurant.Name</a>
+                                    </p>
+                                }
+                                <div class="d-flex justify-content-between align-items-center mt-auto pt-2" style="border-top: 1px solid var(--fb-border-color);">
+                                    <span class="product-price">$@item.Price.ToString("F2")</span>
+                                    
+                                    @if (item.Available)
+                                    {
+                                        <form method="post" action="/Cliente/AddToCart" class="d-inline">
+                                            <input type="hidden" name="productId" value="@item.Id" />
+                                            <input type="hidden" name="quantity" value="1" />
+                                            <button type="submit" class="btn btn-delivery-primary btn-sm" style="font-size: 12px; padding: 6px 16px;">Agregar</button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary text-white rounded-pill px-3 py-1" style="font-size: 11px;">Agotado</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+    else
+    {
+        <div class="col-12">
+            <div class="empty-state">
+                <h5>No hay productos disponibles</h5>
+                <p>Pronto agregaremos deliciosos platos para ti.</p>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const btn = document.getElementById('btnCompartirUbicacion');
+            if (!btn) return;
+            btn.addEventListener('click', function () {
+                const msg = document.getElementById('ubicacionDashMsg');
+                if (!navigator.geolocation) { msg.textContent = 'Tu navegador no soporta geolocalizacion.'; return; }
+                msg.textContent = 'Obteniendo tu ubicacion...';
+                navigator.geolocation.getCurrentPosition(
+                    function (pos) {
+                        const fd = new FormData();
+                        fd.append('lat', pos.coords.latitude);
+                        fd.append('lng', pos.coords.longitude);
+                        fetch('/Cliente/GuardarUbicacion', { method: 'POST', body: fd })
+                            .then(r => r.ok ? r.json() : null)
+                            .then(d => {
+                                msg.innerHTML = d && d.ok
+                                    ? 'Ubicacion guardada (' + d.lat.toFixed(5) + ', ' + d.lng.toFixed(5) + '). Tus proximos pedidos la usaran.'
+                                    : 'No se pudo guardar la ubicacion.';
+                            })
+                            .catch(() => { msg.textContent = 'Error al guardar la ubicacion.'; });
+                    },
+                    function (err) { msg.textContent = 'No se pudo obtener la ubicacion: ' + err.message; },
+                    { enableHighAccuracy: true, timeout: 10000 }
+                );
+            });
+        })();
+    </script>
+}

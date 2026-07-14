@@ -1,0 +1,131 @@
+@model List<delivery_system_dotnet.Models.Order>
+@{
+    ViewData["Title"] = "Gestión de Entregas - FlashBite";
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="dashboard-header mb-4">
+        <h1 class="font-title text-danger mb-1">Gestión de Entregas</h1>
+        <p class="text-muted mb-0">Gestiona tus pedidos asignados, inicia la ruta de envío o reporta inconvenientes en el trayecto.</p>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success border-0 rounded-3 text-center mb-4">
+            @TempData["Message"]
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger border-0 rounded-3 text-center mb-4">
+            @TempData["Error"]
+        </div>
+    }
+
+    <div class="card card-flash border">
+        <div class="card-body">
+            <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Mis Entregas Asignadas (Activas)</h5>
+            
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID de Pedido</th>
+                            <th>Cliente</th>
+                            <th>Dirección de Destino</th>
+                            <th>Restaurante</th>
+                            <th>Estado Actual</th>
+                            <th>Acciones del Repartidor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model != null && Model.Any())
+                        {
+                            foreach (var order in Model)
+                            {
+                                <tr>
+                                    <td><strong>@order.Id</strong></td>
+                                    <td>@(order.Client?.Name ?? "Cliente de Turno")</td>
+                                    <td>@order.DestinyAddres</td>
+                                    <td>@(order.Restaurant?.Name ?? "FlashBite Burgers")</td>
+                                    <td>
+                                        <span class="badge @(order.Status == "Pendiente" || order.Status == "PendienteRepartidor" ? "bg-warning" : order.Status == "Aceptado" || order.Status == "En Camino" ? "bg-info" : order.Status == "Entregado" ? "bg-success" : "bg-danger")">
+                                            @order.Status
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            @if (order.Status == "PendienteRepartidor")
+                                            {
+                                                <form method="post" action="/Delivery/AceptarPedido" class="d-inline">
+                                                    <input type="hidden" name="orderId" value="@order.Id" />
+                                                    <button type="submit" class="btn btn-sm btn-success text-white">Aceptar</button>
+                                                </form>
+                                                <form method="post" action="/Delivery/RechazarPedido" class="d-inline">
+                                                    <input type="hidden" name="orderId" value="@order.Id" />
+                                                    <button type="submit" class="btn btn-sm btn-danger text-white">Rechazar</button>
+                                                </form>
+                                            }
+                                            else if (order.Status == "Aceptado")
+                                            {
+                                                <form method="post" action="/Delivery/UpdateDeliveryStatus" class="d-inline">
+                                                    <input type="hidden" name="orderId" value="@order.Id" />
+                                                    <input type="hidden" name="newStatus" value="En Camino" />
+                                                    <button type="submit" class="btn btn-sm btn-info text-white">Marcar en camino</button>
+                                                </form>
+                                            }
+                                            else if (order.Status == "En Camino")
+                                            {
+                                                <form method="post" action="/Delivery/UpdateDeliveryStatus" class="d-inline">
+                                                    <input type="hidden" name="orderId" value="@order.Id" />
+                                                    <input type="hidden" name="newStatus" value="Entregado" />
+                                                    <button type="submit" class="btn btn-sm btn-success">Marcar entregado</button>
+                                                </form>
+                                            }
+
+                                            <a href="/Delivery/VerMapa?orderId=@order.Id" class="btn btn-sm btn-delivery-primary">
+                                                <i data-lucide="map"></i> Ver mapa
+                                            </a>
+
+                                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#issueModal-@order.Id">Reportar incidencia</button>
+                                        </div>
+
+                                        <!-- Modal Incidencia -->
+                                        <div class="modal fade" id="issueModal-@order.Id" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <form method="post" action="/Delivery/ReportIssue">
+                                                        <input type="hidden" name="orderId" value="@order.Id" />
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title font-title text-danger">Reportar Incidente - Pedido @order.Id</h5>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                        </div>
+                                                        <div class="modal-body">
+                                                            <label class="form-label">Detalle del Inconveniente</label>
+                                                            <textarea name="issueDescription" class="form-control" rows="3" required placeholder="Describe el problema (dirección incorrecta, accidente, retraso...)"></textarea>
+                                                        </div>
+                                                        <div class="modal-footer">
+                                                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                                                            <button type="submit" class="btn btn-danger btn-sm">Reportar Inconveniente</button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">No tienes entregas pendientes asignadas para hoy.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,60 @@
+@model List<delivery_system_dotnet.Models.Order>
+@{
+    ViewData["Title"] = "Historial de Rutas - FlashBite";
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="dashboard-header mb-4">
+        <h1 class="font-title text-danger mb-1">Historial de Viajes y Rutas</h1>
+        <p class="text-muted mb-0">Revisa el listado de tus entregas completadas e incidentes reportados con anterioridad.</p>
+    </div>
+
+    <div class="card card-flash border">
+        <div class="card-body">
+            <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Historial de Viajes</h5>
+            
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID de Pedido</th>
+                            <th>Restaurante</th>
+                            <th>Dirección de Destino</th>
+                            <th>Total</th>
+                            <th>Distancia</th>
+                            <th>Fecha</th>
+                            <th>Estado Final</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model != null && Model.Any())
+                        {
+                            foreach (var order in Model)
+                            {
+                                <tr>
+                                    <td><strong>@order.Id</strong></td>
+                                    <td>@(order.Restaurant?.Name ?? "FlashBite Burgers")</td>
+                                    <td>@order.DestinyAddres</td>
+                                    <td>$@order.Total.ToString("F2")</td>
+                                    <td>@order.Distance km</td>
+                                    <td>@order.DateOrder.ToString("g")</td>
+                                    <td>
+                                        <span class="badge @(order.Status == "Entregado" ? "bg-success" : "bg-danger")">
+                                            @order.Status
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">No tienes viajes completados en tu historial.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

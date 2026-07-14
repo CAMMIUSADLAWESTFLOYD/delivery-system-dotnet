@@ -1,0 +1,176 @@
+﻿@{
+    ViewData["Title"] = "Crear Cuenta - FlashBite";
+}
+
+<div class="auth-split-container animate-fade-in">
+    <!-- Formulario (Lado Izquierdo) -->
+    <div class="auth-panel-form">
+        <div class="d-flex align-items-center mb-4">
+            <span class="brand-bolt me-2" style="font-size: 20px; width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M5.52.359A.5.5 0 0 1 6 0h4a.5.5 0 0 1 .474.658L8.694 6H12.5a.5.5 0 0 1 .395.807l-7 9a.5.5 0 0 1-.873-.454L6.823 9.5H3.5a.5.5 0 0 1-.48-.641l2.5-8.5z"/></svg>            </span>
+            <h2 class="m-0 font-title font-weight-bold" style="color: var(--fb-primary);">FlashBite</h2>
+        </div>
+
+        <h3 class="mb-1 font-title">Comienza hoy</h3>
+        <p class="text-muted small mb-4">Selecciona tu rol para crear tu cuenta en la plataforma</p>
+
+        @if (ViewBag.Error != null)
+        {
+            <div class="alert alert-danger border-0 bg-danger text-white rounded-3 mb-4" role="alert">
+                <strong>¡Error!</strong> @ViewBag.Error
+            </div>
+        }
+
+        <!-- Role Selector Pills -->
+        <ul class="nav nav-pills nav-pills-role justify-content-center mb-4" id="roleTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="cliente-tab" data-bs-toggle="pill" data-bs-target="#cliente-form-pane" type="button" role="tab" aria-selected="true">
+                    Cliente
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="delivery-tab" data-bs-toggle="pill" data-bs-target="#delivery-form-pane" type="button" role="tab" aria-selected="false">
+                    Delivery
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="roleTabContent">
+            
+            <!-- CLIENTE FORM -->
+            <div class="tab-pane fade show active" id="cliente-form-pane" role="tabpanel" aria-labelledby="cliente-tab" tabindex="0">
+                <form method="post" action="/Auth/RegistroCliente">
+                    <h5 class="text-danger mb-3 border-bottom pb-2 font-title">Datos del Cliente</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">DNI / Cédula</label>
+                            <input type="text" class="form-control" name="Dni" required placeholder="12345678A" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre Completo</label>
+                            <input type="text" class="form-control" name="Name" required placeholder="Juan Pérez" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha de Nacimiento</label>
+                            <input type="date" class="form-control" name="DateBirth" required />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Género</label>
+                            <select class="form-select" name="Gender" required>
+                                <option value="true">Masculino</option>
+                                <option value="false">Femenino</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Correo electrónico</label>
+                        <input type="email" class="form-control" name="Mail" required placeholder="correo@ejemplo.com" />
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Contraseña</label>
+                            <input type="password" class="form-control" name="password" required placeholder="Mínimo 6 caracteres" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" name="Phone" required placeholder="+569123456" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <label class="form-label">Dirección de Entrega</label>
+                            <input type="text" class="form-control" name="Address" required placeholder="Calle 123, Depto 4B" />
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <label class="form-label">Método de Pago Preferido</label>
+                            <select class="form-select" name="PayMethod" required>
+                                <option value="1">Efectivo</option>
+                                <option value="2">Tarjeta de Crédito</option>
+                                <option value="3">Transferencia Bancaria</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-flashbite-primary w-100 btn-lg shadow-sm">
+                        Crear cuenta Cliente
+                    </button>
+                </form>
+            </div>
+
+            <!-- DELIVERY FORM -->
+            <div class="tab-pane fade" id="delivery-form-pane" role="tabpanel" aria-labelledby="delivery-tab" tabindex="0">
+                <form method="post" action="/Auth/RegistroDelivery">
+                    <h5 class="text-danger mb-3 border-bottom pb-2 font-title">Datos del Repartidor</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">DNI / Cédula</label>
+                            <input type="text" class="form-control" name="Dni" required placeholder="12345678B" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre Completo</label>
+                            <input type="text" class="form-control" name="Name" required placeholder="Carlos Gómez" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha de Nacimiento</label>
+                            <input type="date" class="form-control" name="DateBirth" required />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Género</label>
+                            <select class="form-select" name="Gender" required>
+                                <option value="true">Masculino</option>
+                                <option value="false">Femenino</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Correo electrónico</label>
+                        <input type="email" class="form-control" name="Mail" required placeholder="correo@ejemplo.com" />
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Contraseña</label>
+                            <input type="password" class="form-control" name="password" required placeholder="Mínimo 6 caracteres" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" name="Phone" required placeholder="+569123456" />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Dirección</label>
+                        <input type="text" class="form-control" name="Address" required placeholder="Dirección del repartidor" />
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <label class="form-label">Vehículo</label>
+                            <input type="text" class="form-control" name="TypeVehicle" required placeholder="Motocicleta / Bicicleta" />
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <label class="form-label">Placa / Patente</label>
+                            <input type="text" class="form-control" name="LicensePlate" required placeholder="AB-123" />
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-flashbite-primary w-100 btn-lg shadow-sm">
+                        Crear cuenta Repartidor
+                    </button>
+                </form>
+            </div>
+
+        </div>
+
+        <div class="text-center mt-4 border-top pt-3">
+            <span class="text-muted small">¿Ya tienes cuenta?</span>
+            <a href="/Auth/Login" class="text-danger small font-weight-bold text-decoration-none ms-1">Inicia sesión aquí</a>
+        </div>
+    </div>
+
+    <!-- Ilustración (Lado Derecho) -->
+    <div class="auth-panel-illustration text-center">
+        <span class="auth-illustration-emoji"><i data-lucide="zap" style="width: 48px; height: 48px;"></i></span>
+        <h4 class="font-title text-dark mb-2">Comienza hoy mismo</h4>
+        <p class="text-muted max-width-xs mx-auto small">Crea tu cuenta de forma rápida, segura y completamente gratis en solo 1 minuto.</p>
+    </div>
+</div>

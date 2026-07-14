@@ -1,0 +1,130 @@
+@model List<delivery_system_dotnet.Models.Products>
+@{
+    ViewData["Title"] = "Gestión de Productos - FlashBite";
+    var categoriasExistentes = Model
+        .Where(p => !string.IsNullOrEmpty(p.Category))
+        .Select(p => p.Category!)
+        .Distinct()
+        .OrderBy(c => c)
+        .ToList();
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="dashboard-header d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h1 class="font-title mb-1" style="font-size: 20px;">Gestión de Productos (@Model.Count)</h1>
+            <p class="text-muted mb-0">Catálogo completo del menú: precios, categorías y disponibilidad.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/Admin/GestionarRestaurantes" class="btn btn-delivery-outline btn-sm">
+                <i data-lucide="store"></i> Restaurantes
+            </a>
+            <a asp-action="CreateProduct" class="btn btn-delivery-primary btn-sm">
+                <i data-lucide="plus"></i> Crear Producto
+            </a>
+        </div>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success mb-4">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger mb-4">@TempData["Error"]</div>
+    }
+
+    <datalist id="categorias-catalogo">
+        @foreach (var c in categoriasExistentes)
+        {
+            <option value="@c"></option>
+        }
+    </datalist>
+
+    <div class="dashboard-card">
+        <div class="table-responsive">
+            <table class="table table-delivery align-middle m-0">
+                <thead>
+                    <tr>
+                        <th style="width: 56px;">Imagen</th>
+                        <th>Producto</th>
+                        <th>Restaurante</th>
+                        <th>Precio</th>
+                        <th>Estado</th>
+                        <th>Categoría</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model != null && Model.Any())
+                    {
+                        foreach (var item in Model)
+                        {
+                            <tr>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(item.ImagePath))
+                                    {
+                                        <img src="@item.ImagePath" alt="Imagen de @item.Name"
+                                             style="width: 44px; height: 44px; object-fit: cover; border: 1px solid var(--fb-border);" />
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">Sin imagen</span>
+                                    }
+                                </td>
+                                <td>
+                                    <strong>@item.Name</strong>
+                                    <div class="text-muted small" style="max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="@item.Description">
+                                        @(string.IsNullOrEmpty(item.Description) ? "Sin descripción" : item.Description)
+                                    </div>
+                                </td>
+                                <td>@(item.Restaurant != null ? item.Restaurant.Name : "Sin restaurante")</td>
+                                <td style="font-variant-numeric: tabular-nums;">$@item.Price.ToString("F2")</td>
+                                <td>
+                                    @if (item.Available)
+                                    {
+                                        <span class="badge-delivery badge-delivery-success">Activo</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge-delivery badge-delivery-danger">Agotado</span>
+                                    }
+                                </td>
+                                <td>
+                                    <form method="post" action="/Admin/AssignCategory" class="d-flex align-items-center gap-2">
+                                        <input type="hidden" name="id" value="@item.Id" />
+                                        <input type="text" name="category" value="@item.Category"
+                                               class="form-control form-control-sm" style="width: 160px;"
+                                               list="categorias-catalogo" required
+                                               title="Categoría actual: @item.Category" />
+                                        <button type="submit" class="btn btn-sm btn-delivery-outline py-1" title="Guardar categoría">
+                                            <i data-lucide="check"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                                <td class="text-end" style="white-space: nowrap;">
+                                    <a asp-action="EditProduct" asp-route-id="@item.Id" class="btn btn-sm btn-delivery-outline py-1">
+                                        <i data-lucide="pencil"></i> Editar
+                                    </a>
+                                    <form method="post" action="/Admin/DeleteProduct"
+                                          onsubmit="return confirm('¿Seguro que deseas eliminar @item.Name?')" class="d-inline">
+                                        <input type="hidden" name="id" value="@item.Id" />
+                                        <button type="submit" class="btn btn-sm btn-destructive py-1">
+                                            <i data-lucide="trash-2"></i> Eliminar
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">No hay productos en la base de datos.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

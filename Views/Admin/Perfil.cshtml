@@ -1,0 +1,124 @@
+@model delivery_system_dotnet.Models.Admin
+@{
+    ViewData["Title"] = "Mi perfil - FlashBite";
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="dashboard-header mb-4">
+        <h1 class="font-title text-danger mb-1">Mi cuenta</h1>
+        <p class="text-muted mb-0">Consulta y actualiza tu información de administrador.</p>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success border-0 rounded-3 text-center mb-4">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger border-0 rounded-3 text-center mb-4">@TempData["Error"]</div>
+    }
+
+    <div class="row">
+        <!-- Columna izquierda: foto, rol y accesos -->
+        <div class="col-lg-4 mb-4">
+            <div class="card card-flash border text-center mb-4">
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(Model.ProfilePhotoUrl))
+                    {
+                        <img src="@Model.ProfilePhotoUrl" alt="Foto de perfil"
+                             style="width:110px;height:110px;object-fit:cover;border-radius:50%;border:3px solid var(--fb-primary);" class="mb-3" />
+                    }
+                    else
+                    {
+                        <div class="mx-auto mb-3" style="width:110px;height:110px;border-radius:50%;background-color:var(--fb-primary-light);color:var(--fb-primary);display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:bold;">
+                            @Model.Name.Substring(0, 1)
+                        </div>
+                    }
+                    <h5 class="font-title mb-1">@Model.Name</h5>
+                    <p class="text-muted small mb-2">@Model.Mail</p>
+                    <span class="badge bg-danger text-white mb-3">@(string.IsNullOrEmpty(Model.Rol) ? "Administrador" : Model.Rol)</span>
+
+                    <form method="post" action="/Admin/CambiarFotoPerfil" enctype="multipart/form-data">
+                        <input type="file" name="foto" accept=".jpg,.jpeg,.png,.webp" class="form-control form-control-sm mb-2" required />
+                        <button type="submit" class="btn btn-outline-danger btn-sm w-100">Cambiar foto</button>
+                        <div class="form-text small">JPG, PNG o WEBP. Máximo 2 MB.</div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card card-flash border">
+                <div class="card-body">
+                    <h6 class="card-title text-danger border-bottom pb-2 font-title">Accesos rápidos</h6>
+                    <div class="d-grid gap-2">
+                        <a href="/Admin/Dashboard" class="btn btn-outline-danger btn-sm text-start">Panel de administración</a>
+                        <a href="/Admin/GestionarAdministradores" class="btn btn-outline-danger btn-sm text-start">Gestión de administradores</a>
+                        <a href="/Admin/MonitorearPedidos" class="btn btn-outline-danger btn-sm text-start">Supervisión de pedidos</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Columna derecha: datos y seguridad -->
+        <div class="col-lg-8">
+            <div class="card card-flash border mb-4">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Información personal</h5>
+                    <form method="post" action="/Admin/ActualizarPerfil">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label small">Nombre completo</label>
+                                <input type="text" class="form-control" name="name" value="@Model.Name" required />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label small">Correo electrónico</label>
+                                <input type="email" class="form-control" name="mail" value="@Model.Mail" required />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label small">Teléfono</label>
+                                <input type="text" class="form-control" name="phone" value="@Model.Phone" required />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label small">Sucursal</label>
+                                <input type="text" class="form-control" name="succursal" value="@Model.Succursal" required />
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small">Dirección</label>
+                            <input type="text" class="form-control" name="address" value="@Model.Address" required />
+                        </div>
+                        <div class="row text-muted small mb-3">
+                            <div class="col-md-6">Documento: <strong>@Model.Dni</strong></div>
+                            <div class="col-md-6">Rol: <strong>@(string.IsNullOrEmpty(Model.Rol) ? "Administrador" : Model.Rol)</strong></div>
+                        </div>
+                        <button type="submit" class="btn btn-delivery-primary px-4">Guardar cambios</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card card-flash border" id="configuracion">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Cambiar contraseña</h5>
+                    <form method="post" action="/Admin/CambiarPasswordPerfil">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label small">Contraseña actual</label>
+                                <input type="password" class="form-control" name="passwordActual" required />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label small">Nueva contraseña</label>
+                                <input type="password" class="form-control" name="passwordNueva" minlength="6" required />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label small">Confirmar nueva contraseña</label>
+                                <input type="password" class="form-control" name="passwordConfirmar" minlength="6" required />
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-outline-danger px-4">Actualizar contraseña</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

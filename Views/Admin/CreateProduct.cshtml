@@ -1,0 +1,101 @@
+@model delivery_system_dotnet.Models.ProductImageViewModel
+@{
+    ViewData["Title"] = "Crear Producto - FlashBite";
+    var restaurantes = ViewBag.Restaurantes as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+    var categorias = ViewBag.Categorias as IEnumerable<string> ?? Enumerable.Empty<string>();
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="section-heading m-0">Nuevo producto</h4>
+                <a href="/Admin/GestionarProductos" class="btn btn-delivery-outline btn-sm">
+                    <i data-lucide="arrow-left"></i> Volver al catálogo
+                </a>
+            </div>
+
+            <div class="dashboard-card">
+                <div class="card-body p-4">
+                    <form asp-action="CreateProduct" enctype="multipart/form-data" method="post">
+                        <div class="mb-3">
+                            <label asp-for="Product.RestaurantId" class="form-label">Restaurante *</label>
+                            <select asp-for="Product.RestaurantId" class="form-select" required>
+                                <option value="">-- Selecciona el restaurante --</option>
+                                @foreach (var r in restaurantes)
+                                {
+                                    <option value="@r.Id">@r.Name</option>
+                                }
+                            </select>
+                            <span asp-validation-for="Product.RestaurantId" class="text-danger small"></span>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-7 mb-3">
+                                <label asp-for="Product.Name" class="form-label">Nombre del producto *</label>
+                                <input asp-for="Product.Name" class="form-control" required maxlength="80" placeholder="Ej.: Ceviche de Camarón" />
+                                <span asp-validation-for="Product.Name" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-5 mb-3">
+                                <label asp-for="Product.Price" class="form-label">Precio ($) *</label>
+                                <input asp-for="Product.Price" class="form-control" type="number" step="0.01" min="0.01" required placeholder="0.00" />
+                                <span asp-validation-for="Product.Price" class="text-danger small"></span>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Product.Category" class="form-label">Categoría *</label>
+                            <input asp-for="Product.Category" class="form-control" list="categorias-existentes" required
+                                   placeholder="Elige una existente o escribe una nueva" />
+                            <datalist id="categorias-existentes">
+                                @foreach (var c in categorias)
+                                {
+                                    <option value="@c"></option>
+                                }
+                            </datalist>
+                            <span asp-validation-for="Product.Category" class="text-danger small"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Product.Description" class="form-label">Descripción</label>
+                            <textarea asp-for="Product.Description" class="form-control" rows="2" maxlength="200"
+                                      placeholder="Se muestra en la tarjeta del producto."></textarea>
+                        </div>
+
+                        <fieldset class="mb-3 p-3" style="border: 1px solid var(--fb-border); background: var(--fb-surface-alt);">
+                            <legend class="form-label m-0 mb-2" style="font-size: 13px;">Imagen del producto</legend>
+                            <div class="row">
+                                <div class="col-md-6 mb-2">
+                                    <label asp-for="ImageFile" class="form-label">Subir archivo</label>
+                                    <input type="file" asp-for="ImageFile" class="form-control" accept="image/*" />
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <label asp-for="ImageUrl" class="form-label">o URL externa</label>
+                                    <input asp-for="ImageUrl" class="form-control" placeholder="https://images.unsplash.com/..." />
+                                    <span asp-validation-for="ImageUrl" class="text-danger small"></span>
+                                </div>
+                            </div>
+                            <small class="text-muted">Si envías ambas, el archivo tiene prioridad. La imagen debe corresponder al producto.</small>
+                        </fieldset>
+
+                        <div class="form-check mb-4">
+                            <input asp-for="Product.Available" class="form-check-input" />
+                            <label asp-for="Product.Available" class="form-check-label">Disponible para la venta</label>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="/Admin/GestionarProductos" class="btn btn-delivery-outline">Cancelar</a>
+                            <button type="submit" class="btn btn-delivery-primary">
+                                <i data-lucide="check"></i> Crear producto
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}

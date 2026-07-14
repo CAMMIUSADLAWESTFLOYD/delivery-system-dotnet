@@ -1,0 +1,55 @@
+@{
+    ViewData["Title"] = "Panel de Repartidor - FlashBite";
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="row">
+        <div class="col-md-12 mb-4">
+            <div class="card card-flash border-0 bg-flashbite text-white p-4">
+                <h1 class="font-title mb-1">Panel del repartidor</h1>
+                <p class="mb-0 text-white-50">Gestiona tus entregas pendientes y revisa tu historial de viajes.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Tarjeta Repartidor -->
+        <div class="col-md-4 mb-4">
+            <div class="card card-flash border-0 h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Repartidor</h5>
+                    <p class="mb-2"><strong>Nombre:</strong> @User.Identity?.Name</p>
+                    <p class="mb-2"><strong>Correo:</strong> @User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Email)?.Value</p>
+                    <p class="mb-0 text-muted small">Rol: Delivery FlashBite</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Entregas Pendientes -->
+        <div class="col-md-8 mb-4">
+            <div class="card card-flash border-0 h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Mis Entregas Asignadas</h5>
+                    <div class="alert alert-info border-0 rounded-3 text-center" role="alert">
+                        No tienes entregas pendientes por ahora.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <!-- Acciones del Repartidor -->
+        <div class="col-md-12 mb-4">
+            <div class="card card-flash border">
+                <div class="card-body">
+                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Herramientas de Reparto</h5>
+                    <div class="d-flex gap-2">
+                        <a href="/Delivery/GestionarEntregas" class="btn btn-sm btn-outline-danger px-3">Mis entregas activas</a>
+                        <a href="/Delivery/HistorialRutas" class="btn btn-sm btn-outline-danger px-3">Historial de viajes</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
