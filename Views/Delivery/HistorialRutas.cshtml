@@ -1,60 +1,87 @@
 @model List<delivery_system_dotnet.Models.Order>
 @{
     ViewData["Title"] = "Historial de Rutas - FlashBite";
+    double GananciaDe(delivery_system_dotnet.Models.Order o) => o.DeliveryFee ?? Math.Round(o.Distance * 1.5, 2);
+    double totalGanancias = Model.Where(o => o.Status == "Entregado").Sum(o => GananciaDe(o));
 }
 
 <div class="container mt-4 animate-fade-in">
-    <div class="dashboard-header mb-4">
-        <h1 class="font-title text-danger mb-1">Historial de Viajes y Rutas</h1>
-        <p class="text-muted mb-0">Revisa el listado de tus entregas completadas e incidentes reportados con anterioridad.</p>
+    <div class="dashboard-header d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h1 class="font-title mb-1" style="font-size: 20px;">Historial de viajes</h1>
+            <p class="text-muted mb-0">Tus entregas completadas y la ganancia por envío de cada una.</p>
+        </div>
+        <a href="/Delivery/ReporteGanancias" class="btn btn-delivery-primary btn-sm">
+            <i data-lucide="file-text"></i> Exportar PDF de ganancias
+        </a>
     </div>
 
-    <div class="card card-flash border">
-        <div class="card-body">
-            <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Historial de Viajes</h5>
-            
-            <div class="table-responsive">
-                <table class="table align-middle">
-                    <thead>
-                        <tr>
-                            <th>ID de Pedido</th>
-                            <th>Restaurante</th>
-                            <th>Dirección de Destino</th>
-                            <th>Total</th>
-                            <th>Distancia</th>
-                            <th>Fecha</th>
-                            <th>Estado Final</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (Model != null && Model.Any())
-                        {
-                            foreach (var order in Model)
-                            {
-                                <tr>
-                                    <td><strong>@order.Id</strong></td>
-                                    <td>@(order.Restaurant?.Name ?? "FlashBite Burgers")</td>
-                                    <td>@order.DestinyAddres</td>
-                                    <td>$@order.Total.ToString("F2")</td>
-                                    <td>@order.Distance km</td>
-                                    <td>@order.DateOrder.ToString("g")</td>
-                                    <td>
-                                        <span class="badge @(order.Status == "Entregado" ? "bg-success" : "bg-danger")">
-                                            @order.Status
-                                        </span>
-                                    </td>
-                                </tr>
-                            }
-                        }
-                        else
+    <div class="row g-3 mb-4">
+        <div class="col-md-4 col-6">
+            <div class="metric-panel-card">
+                <div class="metric-number">@Model.Count(o => o.Status == "Entregado")</div>
+                <div class="metric-text">Entregas completadas</div>
+            </div>
+        </div>
+        <div class="col-md-4 col-6">
+            <div class="metric-panel-card">
+                <div class="metric-number">$@totalGanancias.ToString("F2")</div>
+                <div class="metric-text">Ganancias acumuladas</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-card">
+        <div class="table-responsive">
+            <table class="table table-delivery align-middle m-0">
+                <thead>
+                    <tr>
+                        <th>Pedido</th>
+                        <th>Restaurante</th>
+                        <th>Destino</th>
+                        <th class="text-end">Total pedido</th>
+                        <th class="text-end">Distancia</th>
+                        <th class="text-end">Ganancia envío</th>
+                        <th>Fecha</th>
+                        <th>Estado final</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model != null && Model.Any())
+                    {
+                        foreach (var order in Model)
                         {
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">No tienes viajes completados en tu historial.</td>
+                                <td><strong>@order.Id</strong></td>
+                                <td>@(order.Restaurant?.Name ?? "—")</td>
+                                <td class="text-muted" style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@order.DestinyAddres</td>
+                                <td class="text-end" style="font-variant-numeric: tabular-nums;">$@order.Total.ToString("F2")</td>
+                                <td class="text-end">@order.Distance.ToString("F2") km</td>
+                                <td class="text-end fw-bold" style="font-variant-numeric: tabular-nums; color: var(--fb-success);">
+                                    @(order.Status == "Entregado" ? $"${GananciaDe(order):F2}" : "—")
+                                </td>
+                                <td style="white-space: nowrap;">@order.DateOrder.ToString("g")</td>
+                                <td>
+                                    <span class="badge-delivery @(order.Status == "Entregado" ? "badge-delivery-success" : "badge-delivery-danger")">
+                                        @order.Status
+                                    </span>
+                                </td>
                             </tr>
                         }
-                    </tbody>
-                </table>
-            </div>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="8">
+                                <div class="empty-state" style="border: none;">
+                                    <i data-lucide="route" class="empty-state-icon" style="width:32px;height:32px;"></i>
+                                    <h5>No tienes viajes completados</h5>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

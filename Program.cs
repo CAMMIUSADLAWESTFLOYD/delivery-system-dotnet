@@ -157,6 +157,18 @@ using (var scope = app.Services.CreateScope())
         {
             ResetDatabaseCompletely(context);
         }
+
+        // Códigos de descuento de ejemplo (una sola vez; el admin puede
+        // gestionar la tabla DiscountCodes directamente).
+        if (!context.DiscountCodes.Any())
+        {
+            context.DiscountCodes.AddRange(
+                new DiscountCode { Code = "FLASH10", Percent = 10, Active = true },
+                new DiscountCode { Code = "IBARRA5", Percent = 5, Active = true },
+                new DiscountCode { Code = "BIENVENIDO15", Percent = 15, Active = true });
+            context.SaveChanges();
+            Console.WriteLine(">>> Códigos de descuento sembrados: FLASH10, IBARRA5, BIENVENIDO15 <<<");
+        }
     }
     catch (Exception ex)
     {

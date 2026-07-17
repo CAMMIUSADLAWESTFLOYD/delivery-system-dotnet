@@ -23,10 +23,12 @@ public class ProxyOrderManager : IOrderManager
         // Delivery actor has restricted states
         if (userRole == "Delivery")
         {
-            // Allowed states for Delivery: "En Camino", "Entregado", "Reportado"
-            if (newStatus != "En Camino" && newStatus != "Entregado" && newStatus != "Reportado" && newStatus != "Entregada" && newStatus != "Aceptado")
+            // Estados alcanzables por el repartidor; el resto de las reglas de
+            // transición las valida la máquina de estados (patrón State).
+            var permitidos = new[] { "En Camino", "Entregado", "Entregada", "Reportado", "Aceptado", "CancelacionSolicitada" };
+            if (Array.IndexOf(permitidos, newStatus) < 0)
             {
-                throw new UnauthorizedAccessException("El repartidor solo puede cambiar el estado de la orden a 'En Camino', 'Entregado' o 'Reportado'.");
+                throw new UnauthorizedAccessException("El repartidor solo puede cambiar la orden a 'En Camino', 'Entregado', 'Reportado' o solicitar su cancelación.");
             }
         }
 

@@ -1,0 +1,187 @@
+@model delivery_system_dotnet.Models.Order
+@{
+    ViewData["Title"] = $"Reporte del pedido {Model.Id} - FlashBite";
+    double subtotal = Model.OrderDetails.Sum(d => d.SubTotal);
+    double envio = Model.DeliveryFee ?? Math.Round(Model.Distance * 1.5, 2);
+    double descuento = Model.DiscountAmount ?? 0;
+    double iva = Math.Round((subtotal + envio) * (delivery_system_dotnet.Interfaces.ICalculate.iva / 100.0), 2);
+
+    string BadgeClase(string estado) => estado switch
+    {
+        "Entregado" => "badge-delivery-success",
+        "En Camino" or "Aceptado" or "Preparando" => "badge-delivery-info",
+        "Pendiente" or "PendienteRepartidor" or "CancelacionSolicitada" => "badge-delivery-warning",
+        _ => "badge-delivery-danger"
+    };
+}
+
+<style>
+    @@media print {
+        header, footer, .no-print { display: none !important; }
+        .main-container { padding: 0 !important; }
+        .dashboard-card { border: 1px solid #999 !important; }
+        body { background: #fff !important; }
+    }
+</style>
+
+<div class="container mt-4 animate-fade-in" style="max-width: 860px;">
+    <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+        <h4 class="section-heading m-0">Reporte del pedido</h4>
+        <div class="d-flex gap-2">
+            <a href="/Admin/MonitorearPedidos" class="btn btn-delivery-outline btn-sm">
+                <i data-lucide="arrow-left"></i> Volver al monitor
+            </a>
+            <button type="button" class="btn btn-delivery-primary btn-sm" onclick="window.print()">
+                <i data-lucide="printer"></i> Imprimir / Guardar PDF
+            </button>
+        </div>
+    </div>
+
+    <div class="dashboard-card">
+        <!-- Encabezado del documento -->
+        <div class="p-4" style="background: var(--fb-navy-900); color: var(--fb-text-inverse);">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <h3 class="m-0" style="color: #fff;">FlashBite Delivery</h3>
+                    <div style="color: rgba(244,247,250,.7); font-size: 13px;">Reporte individual de pedido · Ibarra, Ecuador</div>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold" style="font-size: 18px; color: #fff;">@Model.Id</div>
+                    <div style="color: rgba(244,247,250,.7); font-size: 13px;">@Model.DateOrder.ToString("dd/MM/yyyy HH:mm") UTC</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4">
+            <!-- Partes -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="metric-text mb-1">Cliente</div>
+                    <div class="fw-bold">@(Model.Client?.Name ?? "—")</div>
+                    <div class="text-muted small">@(Model.Client?.Mail ?? "")</div>
+                    <div class="text-muted small">@Model.DestinyAddres</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="metric-text mb-1">Restaurante</div>
+                    <div class="fw-bold">@(Model.Restaurant?.Name ?? "—")</div>
+                    <div class="text-muted small">@(Model.Restaurant?.Address ?? "")</div>
+                    <div class="text-muted small">@(Model.Restaurant?.Phone ?? "")</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="metric-text mb-1">Repartidor</div>
+                    <div class="fw-bold">@(Model.Delivery?.Name ?? "Sin asignar")</div>
+                    <div class="text-muted small">@(Model.Delivery?.TypeVehicle ?? "") @(Model.Delivery?.LicensePlate ?? "")</div>
+                </div>
+            </div>
+
+            <!-- Estado y pago -->
+            <div class="d-flex gap-4 flex-wrap mb-4 p-3" style="background: var(--fb-surface-alt); border: 1px solid var(--fb-border);">
+                <div>
+                    <div class="metric-text mb-1">Estado</div>
+                    <span class="badge-delivery @BadgeClase(Model.Status)">@Model.Status</span>
+                </div>
+                <div>
+                    <div class="metric-text mb-1">Método de pago</div>
+                    <div class="fw-bold">@(Model.Payment?.PaymentMethod ?? "No registrado")</div>
+                </div>
+                <div>
+                    <div class="metric-text mb-1">Pago</div>
+                    <span class="badge-delivery @(Model.PaymentStatus ? "badge-delivery-success" : "badge-delivery-warning")">
+                        @(Model.PaymentStatus ? "Pagado" : "Pendiente de cobro")
+                    </span>
+                </div>
+                <div>
+                    <div class="metric-text mb-1">Distancia</div>
+                    <div class="fw-bold">@Model.Distance.ToString("F2") km</div>
+                </div>
+                @if (Model.Rating != null)
+                {
+                    <div>
+                        <div class="metric-text mb-1">Calificación del cliente</div>
+                        <div class="fw-bold" style="color: var(--fb-warning);">@Model.Rating / 5 ★</div>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(Model.CancelRequestReason))
+                {
+                    <div>
+                        <div class="metric-text mb-1">Motivo de cancelación solicitada</div>
+                        <div class="fw-bold text-danger">@Model.CancelRequestReason</div>
+                    </div>
+                }
+            </div>
+
+            <!-- Items del pedido -->
+            <h6 class="fw-bold mb-2">Productos del pedido</h6>
+            <div class="table-responsive mb-4">
+                <table class="table table-delivery m-0" style="border: 1px solid var(--fb-border);">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th class="text-center">Cantidad</th>
+                            <th class="text-end">Precio unit.</th>
+                            <th class="text-end">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.OrderDetails.Any())
+                        {
+                            foreach (var det in Model.OrderDetails)
+                            {
+                                foreach (var prod in det.Products)
+                                {
+                                    <tr>
+                                        <td>@prod.Name <span class="text-muted small">(@prod.Category)</span></td>
+                                        <td class="text-center">@det.Quantity</td>
+                                        <td class="text-end" style="font-variant-numeric: tabular-nums;">$@prod.Price.ToString("F2")</td>
+                                        <td class="text-end" style="font-variant-numeric: tabular-nums;">$@det.SubTotal.ToString("F2")</td>
+                                    </tr>
+                                }
+                            }
+                        }
+                        else
+                        {
+                            <tr><td colspan="4" class="text-center text-muted py-3">Este pedido no tiene detalle de productos.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Desglose económico -->
+            <div class="row justify-content-end">
+                <div class="col-md-5">
+                    <table class="table m-0" style="font-variant-numeric: tabular-nums;">
+                        <tbody>
+                            <tr>
+                                <td class="text-muted">Subtotal productos</td>
+                                <td class="text-end">$@subtotal.ToString("F2")</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Envío (@Model.Distance.ToString("F2") km × $1.50)</td>
+                                <td class="text-end">$@envio.ToString("F2")</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">IVA (@delivery_system_dotnet.Interfaces.ICalculate.iva%)</td>
+                                <td class="text-end">$@iva.ToString("F2")</td>
+                            </tr>
+                            @if (descuento > 0)
+                            {
+                                <tr>
+                                    <td class="text-muted">Descuento (@Model.DiscountCode)</td>
+                                    <td class="text-end" style="color: var(--fb-success);">-$@descuento.ToString("F2")</td>
+                                </tr>
+                            }
+                            <tr style="border-top: 2px solid var(--fb-text);">
+                                <td class="fw-bold">TOTAL</td>
+                                <td class="text-end fw-bold" style="font-size: 18px;">$@Model.Total.ToString("F2")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p class="text-muted small mt-4 mb-0">
+                Documento generado el @DateTime.Now.ToString("dd/MM/yyyy HH:mm") por @User.Identity?.Name · FlashBite Delivery System.
+            </p>
+        </div>
+    </div>
+</div>

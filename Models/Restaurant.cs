@@ -25,6 +25,12 @@ public class Restaurant
     public TimeSpan ClosingHour { get; set; }
     public bool IsActive { get; set; } = true;
 
+    // Reputación del negocio: promedio de las calificaciones (1-5) que los
+    // clientes dejan al calificar sus pedidos, y cuántas ha recibido.
+    // Cada nueva calificación recalcula el promedio (ver CalificarServicio).
+    public double Rating { get; set; } = 5.0;
+    public int RatingCount { get; set; } = 0;
+
     // Restaurant 1 --- 0..* Products (vía RestaurantId)
     public ICollection<Products> Products { get; set; } = new List<Products>();
 
@@ -47,6 +53,8 @@ public class Restaurant
         this.OpeningHour = oldRestaurant.OpeningHour;
         this.ClosingHour = oldRestaurant.ClosingHour;
         this.IsActive = oldRestaurant.IsActive;
+        this.Rating = oldRestaurant.Rating;
+        this.RatingCount = oldRestaurant.RatingCount;
     }
 
     public bool OrderAcceptation(Order newOrder)

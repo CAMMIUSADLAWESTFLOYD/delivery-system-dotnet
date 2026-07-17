@@ -223,6 +223,15 @@
                 return riderMarker;
             }
 
+            // Destino del tramo ACTUAL: hacia el restaurante mientras recoge,
+            // hacia el cliente cuando ya va de salida.
+            var currentPhase = 'to_client';
+            function targetLatLng() {
+                return currentPhase === 'to_restaurant'
+                    ? L.latLng(salidaLat, salidaLng)
+                    : L.latLng(destinoLat, destinoLng);
+            }
+
             // ---------- Ruta (Leaflet Routing Machine, waypoints puros) ----------
             function ensureRoutingControl(startLatLng) {
                 if (routingControl) return;
@@ -231,7 +240,7 @@
                 routingControl = L.Routing.control({
                     waypoints: [
                         L.latLng(startLatLng.lat, startLatLng.lng),
-                        L.latLng(destinoLat, destinoLng)
+                        targetLatLng()
                     ],
                     router: L.Routing.osrmv1({
                         serviceUrl: 'https://router.project-osrm.org/route/v1',
@@ -271,6 +280,8 @@
                 if (!d) return;
                 document.getElementById('orderStatus').innerText = d.status;
                 if (d.status === "Aceptado" || d.status === "Preparando" || d.status === "En Camino") {
+                    // Fase inicial según el estado real del pedido.
+                    currentPhase = (d.status === "En Camino") ? 'to_client' : 'to_restaurant';
                     var okCur = esCoordenadaValida(d.currentLat, d.currentLng);
                     activateTracking(okCur ? d.currentLat : salidaLat, okCur ? d.currentLng : salidaLng);
                     if (!userInteracting) map.fitBounds([[salidaLat, salidaLng], [destinoLat, destinoLng]]);
@@ -309,6 +320,18 @@
                 const newLatLng = L.latLng(parseFloat(lat_in), parseFloat(lng_in));
                 lastLatLng = newLatLng;
 
+                // Cambio de fase (recogida -> entrega): la ruta cambia de destino.
+                if (phase && phase !== currentPhase) {
+                    currentPhase = phase;
+                    if (routingControl) {
+                        routingControl.setWaypoints([newLatLng, targetLatLng()]);
+                        lastRouteUpdate = Date.now();
+                    }
+                    document.getElementById('mapHint').innerText = phase === 'to_restaurant'
+                        ? 'El repartidor va en camino al restaurante a recoger tu pedido.'
+                        : 'Tu pedido va en camino hacia ti.';
+                }
+
                 // (1) MARCADOR — incondicional. Si aún no existe, se crea aquí
                 // mismo: recibir posiciones ES la señal de que la entrega está
                 // activa (no dependemos de ningún otro evento para la movilidad).
@@ -326,7 +349,7 @@
                 if (now - lastRouteUpdate > 5000 && routingControl) {
                     routingControl.setWaypoints([
                         lastLatLng,
-                        L.latLng(destinoLat, destinoLng)
+                        targetLatLng()
                     ]);
                     lastRouteUpdate = now;
                 }
@@ -337,12 +360,27 @@
                 }
             });
 
+            // El repartidor llegó al restaurante y espera el pedido.
+            connection.on('ReceivePhase', function (phase) {
+                if (phase === 'at_restaurant') {
+                    document.getElementById('mapHint').innerText =
+                        'El repartidor llegó al restaurante: están preparando tu pedido…';
+                }
+                if (phase === 'delivered') {
+                    document.getElementById('mapHint').innerText = 'Pedido entregado.';
+                }
+            });
+
             connection.on('ReceiveStatus', function (status) {
                 document.getElementById('orderStatus').innerText = status;
                 // Un estado activo también habilita el seguimiento (por si llega
                 // antes que la primera posición).
                 if (status === "Aceptado" || status === "Preparando" || status === "En Camino") {
                     hideWaitingOverlay();
+                }
+                if (status === "Preparando") {
+                    document.getElementById('mapHint').innerText =
+                        'El restaurante está preparando tu pedido; el repartidor espera en el local.';
                 }
                 if (status === "Entregado") {
                     document.getElementById('progressBar').style.width = '100%';

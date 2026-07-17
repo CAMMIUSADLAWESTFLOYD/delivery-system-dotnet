@@ -1,55 +1,179 @@
+@model delivery_system_dotnet.Models.Delivery
+@using System.Globalization
 @{
     ViewData["Title"] = "Panel de Repartidor - FlashBite";
+    var activas = ViewBag.Activas as List<delivery_system_dotnet.Models.Order>
+                  ?? new List<delivery_system_dotnet.Models.Order>();
+    int completadas = (int)(ViewBag.EntregasCompletadas ?? 0);
+    double ganancias = (double)(ViewBag.Ganancias ?? 0.0);
+    var inv = CultureInfo.InvariantCulture;
+
+    string BadgeClase(string estado) => estado switch
+    {
+        "En Camino" or "Aceptado" or "Preparando" => "badge-delivery-info",
+        "Pendiente" or "PendienteRepartidor" or "CancelacionSolicitada" => "badge-delivery-warning",
+        _ => "badge-delivery-danger"
+    };
 }
 
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #dashMap { width: 100%; height: 320px; display: block; }
+    .leaflet-container img { max-width: none !important; max-height: none !important; }
+</style>
+
 <div class="container mt-4 animate-fade-in">
-    <div class="row">
-        <div class="col-md-12 mb-4">
-            <div class="card card-flash border-0 bg-flashbite text-white p-4">
-                <h1 class="font-title mb-1">Panel del repartidor</h1>
-                <p class="mb-0 text-white-50">Gestiona tus entregas pendientes y revisa tu historial de viajes.</p>
+    <div class="dashboard-header d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h1 class="font-title mb-1" style="font-size: 20px;">Panel del repartidor</h1>
+            <p class="text-muted mb-0">@Model.Name · @Model.TypeVehicle (@Model.LicensePlate)</p>
+        </div>
+        <!-- Disponibilidad: ponerse activo o no -->
+        <form method="post" action="/Delivery/CambiarEstado" class="d-flex align-items-center gap-2">
+            <span class="badge-delivery @(Model.Status ? "badge-delivery-success" : "badge-delivery-warning")">
+                @(Model.Status ? "Disponible" : "No disponible")
+            </span>
+            <input type="hidden" name="disponible" value="@((!Model.Status).ToString().ToLower())" />
+            <button type="submit" class="btn btn-sm @(Model.Status ? "btn-delivery-outline" : "btn-delivery-primary")">
+                <i data-lucide="power"></i> @(Model.Status ? "Ponerme no disponible" : "Ponerme disponible")
+            </button>
+        </form>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success mb-3">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger mb-3">@TempData["Error"]</div>
+    }
+
+    <!-- Métricas -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3 col-6">
+            <div class="metric-panel-card">
+                <div class="metric-number">@activas.Count</div>
+                <div class="metric-text">Entregas activas</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="metric-panel-card">
+                <div class="metric-number">@completadas</div>
+                <div class="metric-text">Completadas</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="metric-panel-card">
+                <div class="metric-number">$@ganancias.ToString("F2")</div>
+                <div class="metric-text">Ganancias por envíos</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="metric-panel-card">
+                <div class="metric-number">@Model.Rating.ToString("F1") ★</div>
+                <div class="metric-text">Calificación</div>
             </div>
         </div>
     </div>
 
-    <div class="row">
-        <!-- Tarjeta Repartidor -->
-        <div class="col-md-4 mb-4">
-            <div class="card card-flash border-0 h-100">
-                <div class="card-body">
-                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Repartidor</h5>
-                    <p class="mb-2"><strong>Nombre:</strong> @User.Identity?.Name</p>
-                    <p class="mb-2"><strong>Correo:</strong> @User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Email)?.Value</p>
-                    <p class="mb-0 text-muted small">Rol: Delivery FlashBite</p>
+    <div class="row g-3">
+        <!-- Entregas asignadas -->
+        <div class="col-lg-5">
+            <div class="dashboard-card h-100">
+                <div class="dashboard-card-header">Mis entregas asignadas</div>
+                <div class="p-0">
+                    @if (activas.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-delivery m-0">
+                                <tbody>
+                                    @foreach (var order in activas)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <strong>#@order.Id.Substring(Math.Max(0, order.Id.Length - 8))</strong>
+                                                <div class="text-muted small">@(order.Restaurant?.Name ?? "—") → @(order.Client?.Name ?? "cliente")</div>
+                                            </td>
+                                            <td><span class="badge-delivery @BadgeClase(order.Status)">@order.Status</span></td>
+                                            <td class="text-end">
+                                                <a href="/Delivery/VerMapa?orderId=@order.Id" class="btn btn-sm btn-delivery-primary"><i data-lucide="map"></i></a>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="empty-state" style="border: none;">
+                            <i data-lucide="package" class="empty-state-icon" style="width:32px;height:32px;"></i>
+                            <h5>No tienes entregas activas</h5>
+                            <p class="mb-0 small">Ponte disponible para que te asignen pedidos.</p>
+                        </div>
+                    }
+                </div>
+                <div class="p-3 d-flex gap-2 flex-wrap" style="border-top: 1px solid var(--fb-border);">
+                    <a href="/Delivery/GestionarEntregas" class="btn btn-sm btn-delivery-outline">Gestionar entregas</a>
+                    <a href="/Delivery/HistorialRutas" class="btn btn-sm btn-delivery-outline">Historial</a>
+                    <a href="/Delivery/ReporteGanancias" class="btn btn-sm btn-delivery-primary"><i data-lucide="file-text"></i> Reporte de ganancias</a>
                 </div>
             </div>
         </div>
 
-        <!-- Entregas Pendientes -->
-        <div class="col-md-8 mb-4">
-            <div class="card card-flash border-0 h-100">
-                <div class="card-body">
-                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Mis Entregas Asignadas</h5>
-                    <div class="alert alert-info border-0 rounded-3 text-center" role="alert">
-                        No tienes entregas pendientes por ahora.
-                    </div>
-                </div>
+        <!-- Mapa de entregas activas -->
+        <div class="col-lg-7">
+            <div class="dashboard-card">
+                <div class="dashboard-card-header">Mapa de mis entregas</div>
+                <div id="dashMap"></div>
             </div>
-        </div>
-    </div>
-
-    <div class="row mt-4">
-        <!-- Acciones del Repartidor -->
-        <div class="col-md-12 mb-4">
-            <div class="card card-flash border">
-                <div class="card-body">
-                    <h5 class="card-title text-danger mb-3 border-bottom pb-2 font-title">Herramientas de Reparto</h5>
-                    <div class="d-flex gap-2">
-                        <a href="/Delivery/GestionarEntregas" class="btn btn-sm btn-outline-danger px-3">Mis entregas activas</a>
-                        <a href="/Delivery/HistorialRutas" class="btn btn-sm btn-outline-danger px-3">Historial de viajes</a>
-                    </div>
-                </div>
-            </div>
+            <p class="text-muted small mt-1 mb-0">Cuadrado azul: restaurante (recogida) · Pin: destino del cliente. Abre una entrega para ver su ruta en vivo.</p>
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            delete L.Icon.Default.prototype._getIconUrl;
+            L.Icon.Default.mergeOptions({
+                iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+                iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png'
+            });
+
+            var map = L.map('dashMap').setView([0.3517, -78.1218], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19, attribution: '© OpenStreetMap'
+            }).addTo(map);
+            setTimeout(function () { map.invalidateSize(); }, 400);
+
+            var restIcon = L.divIcon({
+                html: '<div style="width:14px;height:14px;background:#12809c;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>',
+                className: '', iconSize: [14, 14], iconAnchor: [7, 7]
+            });
+
+            var puntos = [];
+            @foreach (var order in activas)
+            {
+                var dLat = order.DestLatitude ?? (order.ClienteLatitud != 0 ? order.ClienteLatitud : (double?)null);
+                var dLng = order.DestLongitude ?? (order.ClienteLongitud != 0 ? order.ClienteLongitud : (double?)null);
+                if (order.Restaurant != null)
+                {
+                    @:L.marker([@order.Restaurant.Latitude.ToString("G", inv), @order.Restaurant.Longitude.ToString("G", inv)], { icon: restIcon }).addTo(map).bindPopup('Recoger: @Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(order.Restaurant.Name))');
+                    @:puntos.push([@order.Restaurant.Latitude.ToString("G", inv), @order.Restaurant.Longitude.ToString("G", inv)]);
+                }
+                if (dLat.HasValue && dLng.HasValue)
+                {
+                    @:L.marker([@dLat.Value.ToString("G", inv), @dLng.Value.ToString("G", inv)]).addTo(map).bindPopup('Entregar: pedido @order.Id — <a href="/Delivery/VerMapa?orderId=@order.Id">ver ruta</a>');
+                    @:puntos.push([@dLat.Value.ToString("G", inv), @dLng.Value.ToString("G", inv)]);
+                }
+            }
+            if (puntos.length > 0) {
+                map.fitBounds(puntos, { padding: [36, 36] });
+            }
+        });
+    </script>
+}

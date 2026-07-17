@@ -132,7 +132,8 @@
     </div>
 </div>
 
-<!-- Modales de calificación (uno por pedido entregado sin calificar) -->
+<!-- Modales de calificación (uno por pedido entregado sin calificar):
+     el cliente califica al REPARTIDOR y al RESTAURANTE en el mismo paso. -->
 @if (Model != null)
 {
     foreach (var order in Model.Where(o => o.Status == "Entregado" && o.Rating == null))
@@ -142,20 +143,34 @@
                 <div class="modal-content">
                     <form method="post" action="/Cliente/CalificarServicio" class="rating-form">
                         <input type="hidden" name="orderId" value="@order.Id" />
-                        <input type="hidden" name="rating" value="5" class="rating-value" />
                         <div class="modal-header">
-                            <h5 class="modal-title font-title">Calificar al repartidor</h5>
+                            <h5 class="modal-title font-title">Calificar pedido #@order.Id.Substring(0, 8)</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                         </div>
                         <div class="modal-body text-center">
-                            <p class="text-muted mb-2">Pedido #@order.Id.Substring(0, 8)@(order.Delivery?.Name != null ? $" · {order.Delivery.Name}" : "")</p>
-                            <div class="star-picker d-inline-flex gap-1" style="cursor: pointer;">
+                            <!-- Repartidor -->
+                            <p class="fw-bold mb-1">Repartidor@(order.Delivery?.Name != null ? $": {order.Delivery.Name}" : "")</p>
+                            <input type="hidden" name="rating" value="5" />
+                            <div class="star-picker d-inline-flex gap-1" data-target="rating" style="cursor: pointer;">
                                 @for (int s = 1; s <= 5; s++)
                                 {
-                                    <i data-lucide="star" class="star-opt" data-value="@s" style="width:32px;height:32px;color:var(--fb-warning);fill:var(--fb-warning);"></i>
+                                    <i data-lucide="star" class="star-opt" data-value="@s" style="width:30px;height:30px;color:var(--fb-warning);fill:var(--fb-warning);"></i>
                                 }
                             </div>
-                            <p class="mt-2 mb-0 fw-bold rating-label">5 - Excelente servicio</p>
+                            <p class="mt-1 mb-3 small text-muted rating-label" data-for="rating">5 - Excelente servicio</p>
+
+                            <hr class="my-2" />
+
+                            <!-- Restaurante -->
+                            <p class="fw-bold mb-1 mt-2">Restaurante@(order.Restaurant?.Name != null ? $": {order.Restaurant.Name}" : "")</p>
+                            <input type="hidden" name="restaurantRating" value="5" />
+                            <div class="star-picker d-inline-flex gap-1" data-target="restaurantRating" style="cursor: pointer;">
+                                @for (int s = 1; s <= 5; s++)
+                                {
+                                    <i data-lucide="star" class="star-opt" data-value="@s" style="width:30px;height:30px;color:var(--fb-warning);fill:var(--fb-warning);"></i>
+                                }
+                            </div>
+                            <p class="mt-1 mb-0 small text-muted rating-label" data-for="restaurantRating">5 - Excelente comida</p>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-delivery-outline btn-sm" data-bs-dismiss="modal">Cerrar</button>
@@ -170,30 +185,37 @@
 
 @section Scripts {
     <script>
-        // Selector de estrellas: al pasar/hacer clic marca el valor 1-5.
-        const etiquetas = { 1: '1 - Muy malo', 2: '2 - Malo', 3: '3 - Regular', 4: '4 - Muy bueno', 5: '5 - Excelente servicio' };
-        document.querySelectorAll('.rating-form').forEach(form => {
-            const stars = form.querySelectorAll('.star-opt');
-            const hidden = form.querySelector('.rating-value');
-            const label = form.querySelector('.rating-label');
+        // Selector de estrellas con DELEGACIÓN de eventos: Lucide reemplaza los
+        // <i data-lucide> por <svg> DESPUÉS de que este script corre, así que los
+        // listeners se cuelgan del contenedor (que nunca se reemplaza) y se
+        // resuelve el elemento estrella con closest() en el momento del evento.
+        const etiquetas = { 1: '1 - Muy malo', 2: '2 - Malo', 3: '3 - Regular', 4: '4 - Muy bueno', 5: '5 - Excelente' };
+
+        document.querySelectorAll('.star-picker').forEach(picker => {
+            const form = picker.closest('form');
+            const target = picker.dataset.target;                       // rating | restaurantRating
+            const hidden = form.querySelector(`input[name="${target}"]`);
+            const label = form.querySelector(`.rating-label[data-for="${target}"]`);
+
             function pintar(valor) {
-                stars.forEach(st => {
+                picker.querySelectorAll('.star-opt').forEach(st => {
                     const v = parseInt(st.dataset.value, 10);
-                    st.style.opacity = v <= valor ? '1' : '0.3';
+                    st.style.opacity = v <= valor ? '1' : '0.25';
                 });
-                if (label) label.textContent = etiquetas[valor];
+                if (label) label.textContent = etiquetas[valor] || valor;
             }
-            stars.forEach(st => {
-                st.addEventListener('mouseenter', () => pintar(parseInt(st.dataset.value, 10)));
-                st.addEventListener('click', () => {
-                    const v = parseInt(st.dataset.value, 10);
-                    hidden.value = v;
-                    pintar(v);
-                });
+
+            picker.addEventListener('click', e => {
+                const star = e.target.closest('.star-opt');
+                if (!star) return;
+                hidden.value = star.dataset.value;
+                pintar(parseInt(star.dataset.value, 10));
             });
-            const picker = form.querySelector('.star-picker');
-            if (picker) picker.addEventListener('mouseleave', () => pintar(parseInt(hidden.value, 10)));
-            pintar(parseInt(hidden.value, 10));
+            picker.addEventListener('mouseover', e => {
+                const star = e.target.closest('.star-opt');
+                if (star) pintar(parseInt(star.dataset.value, 10));
+            });
+            picker.addEventListener('mouseleave', () => pintar(parseInt(hidden.value, 10)));
         });
     </script>
 }

@@ -281,6 +281,19 @@ public class AdminController : Controller
         });
     }
 
+    // Coordenadas plausibles para un local del sistema (Ecuador continental).
+    private void ValidarCoordenadasRestaurante(Restaurant r)
+    {
+        if (r.Latitude < -5 || r.Latitude > 2 || r.Latitude == 0)
+        {
+            ModelState.AddModelError("Restaurant.Latitude", "Latitud fuera de rango: usa el mapa para fijar la ubicación (Ecuador ≈ -5 a 2).");
+        }
+        if (r.Longitude < -92 || r.Longitude > -75 || r.Longitude == 0)
+        {
+            ModelState.AddModelError("Restaurant.Longitude", "Longitud fuera de rango: usa el mapa para fijar la ubicación (Ecuador ≈ -92 a -75).");
+        }
+    }
+
     [HttpPost]
     public async Task<IActionResult> CreateRestaurant(RestaurantFormViewModel model)
     {
@@ -288,6 +301,7 @@ public class AdminController : Controller
         {
             ModelState.AddModelError("Restaurant.Name", "Ya existe un restaurante con este nombre.");
         }
+        ValidarCoordenadasRestaurante(model.Restaurant);
 
         if (ModelState.IsValid)
         {
@@ -332,6 +346,7 @@ public class AdminController : Controller
         {
             ModelState.AddModelError("Restaurant.Name", "Ya existe otro restaurante con este nombre.");
         }
+        ValidarCoordenadasRestaurante(model.Restaurant);
 
         if (ModelState.IsValid)
         {
@@ -461,6 +476,119 @@ public class AdminController : Controller
         ViewBag.Revenue = _context.Orders.Where(o => o.Status == "Entregado").Sum(o => o.Total);
 
         return View("GenerarReporte");
+    }
+
+    // ============================================================
+    //  Reporte individual de un pedido (imprimible / exportable a PDF
+    //  desde el navegador) con el detalle de items y el desglose de pago.
+    // ============================================================
+    [HttpGet]
+    public IActionResult ReportePedido(string orderId)
+    {
+        var order = _context.Orders
+            .Include(o => o.Restaurant)
+            .Include(o => o.Client)
+            .Include(o => o.Delivery)
+            .Include(o => o.Payment)
+            .Include(o => o.OrderDetails)
+                .ThenInclude(d => d.Products)
+            .FirstOrDefault(o => o.Id == orderId);
+
+        if (order == null) return NotFound();
+        return View("ReportePedido", order);
+    }
+
+    // Resuelve una solicitud de cancelación del repartidor: el admin cancela
+    // definitivamente o reanuda la entrega (vuelve a "En Camino").
+    [HttpPost]
+    public IActionResult ResolverCancelacion(string orderId, bool cancelar)
+    {
+        try
+        {
+            _orderManager.ChangeStatus(orderId, "Admin", cancelar ? "Cancelado" : "En Camino");
+            TempData["Message"] = cancelar
+                ? $"El pedido {orderId} fue cancelado a solicitud del repartidor."
+                : $"La entrega del pedido {orderId} se reanudó.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToAction("MonitorearPedidos");
+    }
+
+    // ============================================================
+    //  Gestión de repartidores: aprobación de registros y suspensión.
+    //  Un repartidor recién registrado queda INACTIVO hasta que un
+    //  administrador lo apruebe aquí.
+    // ============================================================
+    [HttpGet]
+    public IActionResult GestionarRepartidores()
+    {
+        var repartidores = _context.Deliveries
+            .Select(d => new RepartidorItemViewModel
+            {
+                Delivery = d,
+                Activo = EF.Property<bool>(d, "Activo"),
+                EntregasCompletadas = _context.Orders.Count(o => o.DeliveryDni == d.Dni && o.Status == "Entregado"),
+                Ganancias = _context.Orders
+                    .Where(o => o.DeliveryDni == d.Dni && o.Status == "Entregado")
+                    .Sum(o => o.DeliveryFee ?? o.Distance * 1.5)
+            })
+            .ToList();
+
+        return View("GestionarRepartidores", repartidores);
+    }
+
+    [HttpPost]
+    public IActionResult CambiarEstadoRepartidor(string dni, bool activar)
+    {
+        var repartidor = _context.Deliveries.FirstOrDefault(d => d.Dni == dni);
+        if (repartidor == null) return NotFound();
+
+        _context.Entry(repartidor).Property<bool>("Activo").CurrentValue = activar;
+        _context.SaveChanges();
+
+        TempData["Message"] = activar
+            ? $"Repartidor '{repartidor.Name}' aprobado: ya puede iniciar sesión y recibir pedidos."
+            : $"Repartidor '{repartidor.Name}' suspendido: no podrá iniciar sesión.";
+        return RedirectToAction("GestionarRepartidores");
+    }
+
+    // ============================================================
+    //  Gestión de clientes: listado con actividad y suspensión de cuentas.
+    // ============================================================
+    [HttpGet]
+    public IActionResult GestionarClientes()
+    {
+        var clientes = _context.Clients
+            .Select(c => new ClienteItemViewModel
+            {
+                Client = c,
+                Activo = EF.Property<bool>(c, "Activo"),
+                Pedidos = _context.Orders.Count(o => o.ClientDni == c.Dni),
+                TotalGastado = _context.Orders
+                    .Where(o => o.ClientDni == c.Dni && o.Status == "Entregado")
+                    .Sum(o => (double?)o.Total) ?? 0
+            })
+            .ToList();
+
+        return View("GestionarClientes", clientes);
+    }
+
+    [HttpPost]
+    public IActionResult CambiarEstadoCliente(string dni, bool activar)
+    {
+        var cliente = _context.Clients.FirstOrDefault(c => c.Dni == dni);
+        if (cliente == null) return NotFound();
+
+        _context.Entry(cliente).Property<bool>("Activo").CurrentValue = activar;
+        _context.SaveChanges();
+
+        TempData["Message"] = activar
+            ? $"Cliente '{cliente.Name}' activado."
+            : $"Cliente '{cliente.Name}' suspendido.";
+        return RedirectToAction("GestionarClientes");
     }
 
     // ============================================================

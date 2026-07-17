@@ -89,6 +89,39 @@
                                             </a>
 
                                             <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#issueModal-@order.Id">Reportar incidencia</button>
+
+                                            @if (order.Status == "Aceptado" || order.Status == "En Camino")
+                                            {
+                                                <button type="button" class="btn btn-sm btn-destructive" data-bs-toggle="modal" data-bs-target="#cancelModal-@order.Id">Solicitar cancelación</button>
+                                            }
+                                            @if (order.Status == "CancelacionSolicitada")
+                                            {
+                                                <span class="badge-delivery badge-delivery-warning" title="@order.CancelRequestReason">Esperando decisión del admin</span>
+                                            }
+                                        </div>
+
+                                        <!-- Modal Solicitar Cancelación (la resuelve el administrador) -->
+                                        <div class="modal fade" id="cancelModal-@order.Id" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <form method="post" action="/Delivery/SolicitarCancelacion">
+                                                        <input type="hidden" name="orderId" value="@order.Id" />
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title font-title">Solicitar cancelación - @order.Id</h5>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                                                        </div>
+                                                        <div class="modal-body">
+                                                            <p class="text-muted small">La cancelación la aprueba el administrador. Mientras tanto, el recorrido queda en pausa.</p>
+                                                            <label class="form-label">Motivo de la solicitud</label>
+                                                            <textarea name="motivo" class="form-control" rows="3" required maxlength="200" placeholder="Ej.: el cliente no responde, dirección inaccesible, daño del vehículo..."></textarea>
+                                                        </div>
+                                                        <div class="modal-footer">
+                                                            <button type="button" class="btn btn-delivery-outline btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                                                            <button type="submit" class="btn btn-destructive btn-sm">Enviar solicitud</button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <!-- Modal Incidencia -->

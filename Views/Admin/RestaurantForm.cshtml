@@ -70,14 +70,24 @@
                             </div>
                             <div class="col-md-3 col-6 mb-3">
                                 <label asp-for="Restaurant.Latitude" class="form-label">Latitud</label>
-                                <input asp-for="Restaurant.Latitude" class="form-control" type="number" step="any" />
+                                <input asp-for="Restaurant.Latitude" class="form-control" type="number" step="any" id="latInput" />
                                 <small class="text-muted">Ibarra ≈ 0.35</small>
+                                <span asp-validation-for="Restaurant.Latitude" class="text-danger small d-block"></span>
                             </div>
                             <div class="col-md-3 col-6 mb-3">
                                 <label asp-for="Restaurant.Longitude" class="form-label">Longitud</label>
-                                <input asp-for="Restaurant.Longitude" class="form-control" type="number" step="any" />
+                                <input asp-for="Restaurant.Longitude" class="form-control" type="number" step="any" id="lngInput" />
                                 <small class="text-muted">Ibarra ≈ -78.12</small>
+                                <span asp-validation-for="Restaurant.Longitude" class="text-danger small d-block"></span>
                             </div>
+                        </div>
+
+                        <!-- Selector de ubicación: clic en el mapa (o arrastrar el pin)
+                             fija las coordenadas exactas del restaurante. -->
+                        <div class="mb-3">
+                            <label class="form-label">Ubicación en el mapa</label>
+                            <div id="ubicacionMap" style="height: 300px; border: 1px solid var(--fb-border);"></div>
+                            <small class="text-muted">Haz clic en el punto exacto del local o arrastra el pin. Los campos de latitud/longitud se llenan solos.</small>
                         </div>
 
                         <fieldset class="mb-3 p-3" style="border: 1px solid var(--fb-border); background: var(--fb-surface-alt);">
@@ -124,4 +134,54 @@
 
 @section Scripts {
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            delete L.Icon.Default.prototype._getIconUrl;
+            L.Icon.Default.mergeOptions({
+                iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+                iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png'
+            });
+
+            var latInput = document.getElementById('latInput');
+            var lngInput = document.getElementById('lngInput');
+
+            // Posición inicial: la del formulario, o el centro de Ibarra.
+            var lat = parseFloat(latInput.value.replace(',', '.'));
+            var lng = parseFloat(lngInput.value.replace(',', '.'));
+            if (!isFinite(lat) || !isFinite(lng) || lat === 0) { lat = 0.3517; lng = -78.1223; }
+
+            var map = L.map('ubicacionMap').setView([lat, lng], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19, attribution: '© OpenStreetMap'
+            }).addTo(map);
+            setTimeout(function () { map.invalidateSize(); }, 400);
+
+            var marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+
+            function syncInputs(pos) {
+                latInput.value = pos.lat.toFixed(6);
+                lngInput.value = pos.lng.toFixed(6);
+            }
+            marker.on('dragend', function () { syncInputs(marker.getLatLng()); });
+            map.on('click', function (e) {
+                marker.setLatLng(e.latlng);
+                syncInputs(e.latlng);
+            });
+
+            // Editar los campos a mano también mueve el pin.
+            function syncMarker() {
+                var a = parseFloat(latInput.value.replace(',', '.'));
+                var b = parseFloat(lngInput.value.replace(',', '.'));
+                if (isFinite(a) && isFinite(b)) {
+                    marker.setLatLng([a, b]);
+                    map.panTo([a, b]);
+                }
+            }
+            latInput.addEventListener('change', syncMarker);
+            lngInput.addEventListener('change', syncMarker);
+        });
+    </script>
 }

@@ -41,7 +41,9 @@
       "Bash(curl -s -o site_served.css -w \"%{http_code} %{size_download} bytes\\\\n\" \"http://localhost:5000/css/site.css\")",
       "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q 'SET NOCOUNT ON; *)",
       "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT Id, Rating FROM Orders WHERE Id='TEST-RATE01'; SELECT Dni, Rating FROM Persons WHERE Dni='DELIV-1';\" -W)",
-      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; DELETE FROM Orders WHERE Id IN \\('TEST-RATE01','TEST-MAP01'\\); UPDATE Persons SET Rating=4.8 WHERE Dni='DELIV-1'; SELECT 'limpieza ok' AS r;\" -W)"
+      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; DELETE FROM Orders WHERE Id IN \\('TEST-RATE01','TEST-MAP01'\\); UPDATE Persons SET Rating=4.8 WHERE Dni='DELIV-1'; SELECT 'limpieza ok' AS r;\" -W)",
+      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT Code, [Percent], Active FROM DiscountCodes; SELECT COL_LENGTH\\('Orders','DeliveryFee'\\) AS FeeCol, COL_LENGTH\\('Orders','CancelRequestReason'\\) AS CancelCol;\" -W)",
+      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT o.Id, o.Status, o.Distance, o.DeliveryFee, o.DiscountCode, o.DiscountAmount, o.Total, o.PaymentStatus, p.PaymentMethod FROM Orders o LEFT JOIN Payments p ON p.OrderId = o.Id WHERE o.Id = 'ORD-50B9F21C';\" -W)"
     ]
   }
 }

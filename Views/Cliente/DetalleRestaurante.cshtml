@@ -33,7 +33,7 @@
                             @Model.OpeningHour.ToString(@"hh\:mm") - @Model.ClosingHour.ToString(@"hh\:mm")
                         </span>
                         <span class="badge bg-light text-dark border p-2 rounded-pill" style="font-size: 13px; font-weight: 600;">
-                            4.9 (500+ resenas)
+                            @(Model.RatingCount > 0 ? $"★ {Model.Rating:F1} ({Model.RatingCount} reseña{(Model.RatingCount == 1 ? "" : "s")})" : "Sin reseñas aún")
                         </span>
                     </div>
                 </div>

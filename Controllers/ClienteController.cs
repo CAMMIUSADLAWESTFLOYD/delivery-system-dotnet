@@ -89,7 +89,9 @@ public class ClienteController : Controller
             });
         }
 
-        model.DeliveryFee = model.Items.Any() ? 1.50 : 0.0;
+        // El costo de envío real se calcula por kilómetro cuando el cliente fija
+        // su punto de entrega en el mapa (tarifa $1.50/km, ver Checkout).
+        model.DeliveryFee = 0.0;
 
         // Cargar repartidores disponibles
         ViewBag.Repartidores = _context.Deliveries.Where(d => d.Status).ToList();
@@ -243,7 +245,7 @@ public class ClienteController : Controller
     }
 
     [HttpPost]
-    public IActionResult CalificarServicio(string orderId, int rating)
+    public IActionResult CalificarServicio(string orderId, int rating, int restaurantRating)
     {
         var clientDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (clientDni == null) return Unauthorized();
@@ -251,6 +253,7 @@ public class ClienteController : Controller
         // Solo el dueño del pedido puede calificarlo.
         var order = _context.Orders
             .Include(o => o.Delivery)
+            .Include(o => o.Restaurant)
             .FirstOrDefault(o => o.Id == orderId && o.ClientDni == clientDni);
         if (order == null) return NotFound();
 
@@ -262,38 +265,51 @@ public class ClienteController : Controller
 
         if (order.Rating != null)
         {
-            TempData["Error"] = $"El pedido {orderId} ya fue calificado con {order.Rating} estrellas.";
+            TempData["Error"] = $"El pedido {orderId} ya fue calificado.";
             return RedirectToAction("HistorialPedidos");
         }
 
-        if (rating < 1 || rating > 5)
+        if (rating < 1 || rating > 5 || restaurantRating < 1 || restaurantRating > 5)
         {
-            TempData["Error"] = "La calificación debe estar entre 1 y 5 estrellas.";
+            TempData["Error"] = "Las calificaciones deben estar entre 1 y 5 estrellas.";
             return RedirectToAction("HistorialPedidos");
         }
 
         order.Rating = rating;
+        order.RestaurantRating = restaurantRating;
+        _context.SaveChanges(); // asegura que estas notas entren en los promedios
 
-        // Recalcular el promedio del repartidor a partir de TODAS sus calificaciones.
+        // Promedio REAL del repartidor sobre todas sus calificaciones.
         if (order.Delivery != null)
         {
-            _context.SaveChanges(); // asegura que esta calificación entre en el promedio
-
             var notas = _context.Orders
                 .Where(o => o.DeliveryDni == order.DeliveryDni && o.Rating != null)
                 .Select(o => o.Rating!.Value)
                 .ToList();
-
             if (notas.Count > 0)
             {
                 order.Delivery.Rating = Math.Round(notas.Average(), 2);
             }
         }
 
+        // Promedio REAL del restaurante: cada calificación buena o mala mueve
+        // la reputación del negocio (Rating) y su número de reseñas (RatingCount).
+        if (order.Restaurant != null)
+        {
+            var notasRest = _context.Orders
+                .Where(o => o.RestaurantId == order.RestaurantId && o.RestaurantRating != null)
+                .Select(o => o.RestaurantRating!.Value)
+                .ToList();
+            if (notasRest.Count > 0)
+            {
+                order.Restaurant.Rating = Math.Round(notasRest.Average(), 2);
+                order.Restaurant.RatingCount = notasRest.Count;
+            }
+        }
+
         _context.SaveChanges();
 
-        var quien = order.Delivery?.Name != null ? $"al repartidor {order.Delivery.Name}" : "el servicio";
-        TempData["Message"] = $"¡Gracias! Calificaste {quien} con {rating} estrella{(rating == 1 ? "" : "s")}.";
+        TempData["Message"] = $"¡Gracias! Calificaste al repartidor con {rating}★ y a {order.Restaurant?.Name ?? "el restaurante"} con {restaurantRating}★.";
         return RedirectToAction("HistorialPedidos");
     }
 
@@ -443,11 +459,40 @@ public class ClienteController : Controller
         return RedirectToAction("Carrito");
     }
 
+    // Distancia en km entre dos coordenadas (Haversine). Es la fuente de verdad
+    // del costo de envío: no depende de servicios externos.
+    private static double DistanciaKm(double lat1, double lng1, double lat2, double lng2)
+    {
+        const double R = 6371.0;
+        double dLat = (lat2 - lat1) * Math.PI / 180.0;
+        double dLng = (lng2 - lng1) * Math.PI / 180.0;
+        double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+                 + Math.Cos(lat1 * Math.PI / 180.0) * Math.Cos(lat2 * Math.PI / 180.0)
+                 * Math.Sin(dLng / 2) * Math.Sin(dLng / 2);
+        return 2 * R * Math.Asin(Math.Sqrt(a));
+    }
+
+    // Valida un código de descuento (AJAX del carrito). Devuelve el porcentaje.
+    [HttpGet]
+    public IActionResult ValidarDescuento(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return Json(new { ok = false, error = "Ingresa un código." });
+
+        var codigo = _context.DiscountCodes
+            .FirstOrDefault(d => d.Code == code.Trim().ToUpper() && d.Active);
+
+        return codigo == null
+            ? Json(new { ok = false, error = "Código inválido o inactivo." })
+            : Json(new { ok = true, code = codigo.Code, percent = codigo.Percent });
+    }
+
     [HttpPost]
-    public IActionResult Checkout(string destinyAddres, string deliveryDni, double? ClienteLatitud, double? ClienteLongitud)
+    public IActionResult Checkout(string destinyAddres, string deliveryDni, double? ClienteLatitud,
+        double? ClienteLongitud, string paymentMethod, string? discountCode, double? routeKm)
     {
         // Validación Anti-Océano (Failsafe)
-        if (ClienteLatitud == 0 || ClienteLongitud == 0 || ClienteLatitud == null || ClienteLongitud == null) 
+        if (ClienteLatitud == 0 || ClienteLongitud == 0 || ClienteLatitud == null || ClienteLongitud == null)
         {
             // Si el frontend falló, forzamos coordenadas válidas por defecto (Ibarra)
             ClienteLatitud = 0.3517;
@@ -463,10 +508,18 @@ public class ClienteController : Controller
             TempData["Error"] = "Tu carrito está vacío.";
             return RedirectToAction("Carrito");
         }
-        
+
         if (string.IsNullOrEmpty(deliveryDni))
         {
             TempData["Error"] = "Debes seleccionar un repartidor disponible.";
+            return RedirectToAction("Carrito");
+        }
+
+        // Método de pago obligatorio: Tarjeta, Transferencia o Efectivo.
+        var metodosValidos = new[] { "Tarjeta", "Transferencia", "Efectivo" };
+        if (string.IsNullOrEmpty(paymentMethod) || !metodosValidos.Contains(paymentMethod))
+        {
+            TempData["Error"] = "Selecciona un método de pago (Tarjeta, Transferencia o Efectivo).";
             return RedirectToAction("Carrito");
         }
 
@@ -478,6 +531,37 @@ public class ClienteController : Controller
             .FirstOrDefault(p => p.Id == firstProductId);
         var restaurant = firstProduct?.Restaurant ?? _context.Restaurants.FirstOrDefault();
 
+        // ------- Cálculo REAL de la distancia de entrega (por kilómetro) -------
+        // Línea recta (Haversine) restaurante -> punto de entrega, con factor
+        // vial 1.3. Si el front midió la ruta real por calles (OSRM), se acepta
+        // siempre que sea coherente con la línea recta (sanidad anti-manipulación).
+        double distanciaKm = 2.0; // respaldo si el restaurante no tiene coordenadas
+        if (restaurant != null)
+        {
+            var recta = DistanciaKm(restaurant.Latitude, restaurant.Longitude,
+                                    ClienteLatitud.Value, ClienteLongitud.Value);
+            distanciaKm = Math.Round(recta * 1.3, 2);
+            if (routeKm.HasValue && !double.IsNaN(routeKm.Value)
+                && routeKm.Value >= recta * 0.9 && routeKm.Value <= recta * 3 + 1)
+            {
+                distanciaKm = Math.Round(routeKm.Value, 2);
+            }
+        }
+        distanciaKm = Math.Clamp(distanciaKm, 0.3, 50);
+
+        // Código de descuento (se revalida en servidor; el JS solo previsualiza).
+        DiscountCode? descuento = null;
+        if (!string.IsNullOrWhiteSpace(discountCode))
+        {
+            descuento = _context.DiscountCodes
+                .FirstOrDefault(d => d.Code == discountCode.Trim().ToUpper() && d.Active);
+            if (descuento == null)
+            {
+                TempData["Error"] = $"El código de descuento '{discountCode}' no es válido.";
+                return RedirectToAction("Carrito");
+            }
+        }
+
         var orderId = "ORD-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
         var order = new Order
         {
@@ -487,8 +571,10 @@ public class ClienteController : Controller
             RestaurantId = restaurant?.Id,
             ClientDni = clientDni,
             DeliveryDni = deliveryDni,
-            Distance = 4.2,
-            PaymentStatus = false
+            Distance = distanciaKm,
+            // Tarjeta/Transferencia se consideran pagadas al confirmar;
+            // Efectivo se cobra contra entrega.
+            PaymentStatus = paymentMethod != "Efectivo"
         };
         AplicarUbicacionEntrega(order, clientDni, ClienteLatitud, ClienteLongitud);
         order.ClienteLatitud = ClienteLatitud ?? 0.3517;
@@ -503,10 +589,26 @@ public class ClienteController : Controller
             if (product == null || !product.Available) continue;
             order.AddNewProduct(product, kv.Value);
         }
+
+        // Desglose final: AddNewProduct ya calculó Total = subtotal + envío
+        // (Distance × tarifa/km, ver Order.ICalculateDeliveryFee) + IVA.
+        // El descuento porcentual se aplica sobre el subtotal de productos.
+        double subtotalProductos = order.OrderDetails.Sum(d => d.SubTotal);
+        order.DeliveryFee = Math.Round(order.ICalculateDeliveryFee(distanciaKm), 2);
+        if (descuento != null)
+        {
+            order.DiscountCode = descuento.Code;
+            order.DiscountAmount = Math.Round(subtotalProductos * descuento.Percent / 100.0, 2);
+            order.Total = Math.Max(0, Math.Round(order.Total - order.DiscountAmount.Value, 2));
+        }
+
+        // Registro del método de pago del pedido.
+        _context.Payments.Add(new Payment { OrderId = orderId, PaymentMethod = paymentMethod });
         _context.SaveChanges();
 
         SaveCart(new Dictionary<int, int>());
-        TempData["Message"] = $"Pedido {orderId} confirmado. Esperando que el repartidor lo acepte.";
+        var pagoTxt = paymentMethod == "Efectivo" ? "pagarás en efectivo al recibir" : $"pago registrado con {paymentMethod.ToLower()}";
+        TempData["Message"] = $"Pedido {orderId} confirmado ({pagoTxt}). Esperando que el repartidor lo acepte.";
         return RedirectToAction("HistorialPedidos");
     }
 

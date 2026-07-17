@@ -58,10 +58,37 @@ namespace delivery_system_dotnet.Migrations
                     b.ToTable("CodigosVerificacion");
                 });
 
+            modelBuilder.Entity("delivery_system_dotnet.Models.DiscountCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<double>("Percent")
+                        .HasColumnType("float");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DiscountCodes");
+                });
+
             modelBuilder.Entity("delivery_system_dotnet.Models.Order", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CancelRequestReason")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ClientDni")
                         .HasColumnType("nvarchar(450)");
@@ -84,6 +111,9 @@ namespace delivery_system_dotnet.Migrations
                     b.Property<string>("DeliveryDni")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<double?>("DeliveryFee")
+                        .HasColumnType("float");
+
                     b.Property<double?>("DestLatitude")
                         .HasColumnType("float");
 
@@ -92,6 +122,12 @@ namespace delivery_system_dotnet.Migrations
 
                     b.Property<string>("DestinyAddres")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double?>("DiscountAmount")
+                        .HasColumnType("float");
+
+                    b.Property<string>("DiscountCode")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<double>("Distance")
@@ -104,6 +140,9 @@ namespace delivery_system_dotnet.Migrations
                         .HasColumnType("int");
 
                     b.Property<int?>("RestaurantId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RestaurantRating")
                         .HasColumnType("int");
 
                     b.Property<string>("Status")
@@ -303,6 +342,12 @@ namespace delivery_system_dotnet.Migrations
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<double>("Rating")
+                        .HasColumnType("float");
+
+                    b.Property<int>("RatingCount")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 

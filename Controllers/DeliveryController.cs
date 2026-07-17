@@ -36,7 +36,76 @@ public class DeliveryController : Controller
 
     public IActionResult Dashboard()
     {
-        return View();
+        var deliveryDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var repartidor = _context.Deliveries.FirstOrDefault(d => d.Dni == deliveryDni);
+        if (repartidor == null) return NotFound();
+
+        // Entregas activas (para la lista y el mapa del panel).
+        ViewBag.Activas = _context.Orders
+            .Include(o => o.Restaurant)
+            .Include(o => o.Client)
+            .Where(o => o.DeliveryDni == deliveryDni && o.Status != "Entregado" && o.Status != "Cancelado")
+            .OrderBy(o => o.DateOrder)
+            .ToList();
+
+        // Resumen de ganancias (envíos de pedidos entregados).
+        ViewBag.EntregasCompletadas = _context.Orders
+            .Count(o => o.DeliveryDni == deliveryDni && o.Status == "Entregado");
+        ViewBag.Ganancias = _context.Orders
+            .Where(o => o.DeliveryDni == deliveryDni && o.Status == "Entregado")
+            .Sum(o => (double?)(o.DeliveryFee ?? o.Distance * 1.5)) ?? 0;
+
+        return View(repartidor);
+    }
+
+    // El repartidor no puede cancelar por sí mismo: SOLICITA la cancelación
+    // y el administrador la resuelve en el monitor de pedidos (patrón State:
+    // Shipped/Paid -> CancelRequested -> Cancelled | reanudar).
+    [HttpPost]
+    public IActionResult SolicitarCancelacion(string orderId, string motivo)
+    {
+        var deliveryDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var order = _context.Orders.FirstOrDefault(o => o.Id == orderId && o.DeliveryDni == deliveryDni);
+        if (order == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(motivo))
+        {
+            TempData["Error"] = "Debes indicar el motivo de la cancelación.";
+            return RedirectToAction("GestionarEntregas");
+        }
+
+        try
+        {
+            _orderManager.ChangeStatus(orderId, "Delivery", "CancelacionSolicitada");
+            order.CancelRequestReason = motivo.Trim();
+            _context.SaveChanges();
+            TempData["Message"] = $"Solicitud de cancelación del pedido {orderId} enviada al administrador.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
+        return RedirectToAction("GestionarEntregas");
+    }
+
+    // Reporte imprimible (guardar como PDF desde el navegador) del historial
+    // de entregas con la ganancia por envío de cada una.
+    [HttpGet]
+    public IActionResult ReporteGanancias()
+    {
+        var deliveryDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var repartidor = _context.Deliveries.FirstOrDefault(d => d.Dni == deliveryDni);
+        if (repartidor == null) return NotFound();
+
+        var entregas = _context.Orders
+            .Include(o => o.Restaurant)
+            .Where(o => o.DeliveryDni == deliveryDni && o.Status == "Entregado")
+            .OrderByDescending(o => o.DateOrder)
+            .ToList();
+
+        ViewBag.Repartidor = repartidor;
+        return View("ReporteGanancias", entregas);
     }
 
     [HttpGet]

@@ -20,6 +20,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Restaurant> Restaurants { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
     public DbSet<CodigoVerificacion> CodigosVerificacion { get; set; } = null!;
+    public DbSet<DiscountCode> DiscountCodes { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

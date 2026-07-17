@@ -17,15 +17,31 @@ public class AuthController : Controller
     private readonly IUsuarioService _usuarioService;
     private readonly ICodigoVerificacionService _otpService;
     private readonly IEmailService _emailService;
+    private readonly IConfiguration _configuration;
+    private readonly IWebHostEnvironment _env;
 
     public AuthController(
         IUsuarioService usuarioService,
         ICodigoVerificacionService otpService,
-        IEmailService emailService)
+        IEmailService emailService,
+        IConfiguration configuration,
+        IWebHostEnvironment env)
     {
         _usuarioService = usuarioService;
         _otpService = otpService;
         _emailService = emailService;
+        _configuration = configuration;
+        _env = env;
+    }
+
+    // ¿Hay un servidor SMTP realmente configurado? (misma regla que EmailService)
+    private bool SmtpConfigurado()
+    {
+        var server = !string.IsNullOrEmpty(_configuration["SmtpSettings:Server"])
+            ? _configuration["SmtpSettings:Server"] : _configuration["Email:Host"];
+        var user = !string.IsNullOrEmpty(_configuration["SmtpSettings:Username"])
+            ? _configuration["SmtpSettings:Username"] : _configuration["Email:Username"];
+        return !string.IsNullOrEmpty(server) && !string.IsNullOrEmpty(user);
     }
 
     [HttpGet]
@@ -249,7 +265,7 @@ public class AuthController : Controller
             }
 
             await _usuarioService.RegistrarDeliveryAsync(model, password);
-            return RedirectToAction("Login", new { info = "Repartidor registrado con éxito. Ya puedes iniciar sesión." });
+            return RedirectToAction("Login", new { info = "Registro recibido. Un administrador debe aprobar tu vehículo antes de que puedas iniciar sesión." });
         }
         catch (Exception ex)
         {
@@ -288,6 +304,15 @@ public class AuthController : Controller
 
             var otp = await _otpService.GenerarCodigoOtpAsync(usuario, TipoCodigo.Recuperacion);
             await _emailService.EnviarCodigoOtpAsync(usuario.Mail, usuario.Name, otp, "Recuperación de Contraseña");
+
+            // Sin SMTP configurado el correo NUNCA sale (EmailService solo lo
+            // registra en consola), así que el código se muestra en pantalla para
+            // que la recuperación sea utilizable. Al configurar SMTP real en
+            // appsettings.json este aviso desaparece automáticamente.
+            if (!SmtpConfigurado())
+            {
+                TempData["DevOtp"] = otp;
+            }
 
             HttpContext.Session.SetString("RecoveryEmail", email);
             return RedirectToAction("RestablecerPassword");

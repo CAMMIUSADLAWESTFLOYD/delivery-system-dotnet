@@ -53,6 +53,19 @@ public class Order : ICalculate
     // impedir calificar dos veces el mismo pedido.
     public int? Rating { get; set; }
 
+    // Calificación (1-5) que el cliente dejó al RESTAURANTE en el mismo
+    // formulario. Alimenta el promedio Restaurant.Rating del negocio.
+    public int? RestaurantRating { get; set; }
+
+    // Desglose del checkout (nullable para no romper pedidos históricos):
+    // costo de envío cobrado (tarifa por km sobre Distance) y descuento aplicado.
+    public double? DeliveryFee { get; set; }
+    public string? DiscountCode { get; set; }
+    public double? DiscountAmount { get; set; }
+
+    // Motivo con el que el repartidor solicitó al admin cancelar la entrega.
+    public string? CancelRequestReason { get; set; }
+
     public ICollection<OrderDetails> OrderDetails { get; set; } = new List<OrderDetails>();
 
     public Payment? Payment { get; set; }

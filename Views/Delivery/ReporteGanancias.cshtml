@@ -1,0 +1,119 @@
+@model List<delivery_system_dotnet.Models.Order>
+@{
+    ViewData["Title"] = "Reporte de Ganancias - FlashBite";
+    var repartidor = ViewBag.Repartidor as delivery_system_dotnet.Models.Delivery;
+    double GananciaDe(delivery_system_dotnet.Models.Order o) => o.DeliveryFee ?? Math.Round(o.Distance * 1.5, 2);
+    double totalGanancias = Model.Sum(o => GananciaDe(o));
+    double totalVendido = Model.Sum(o => o.Total);
+    double kmRecorridos = Model.Sum(o => o.Distance);
+}
+
+<style>
+    @@media print {
+        header, footer, .no-print { display: none !important; }
+        .main-container { padding: 0 !important; }
+        .dashboard-card { border: 1px solid #999 !important; }
+        body { background: #fff !important; }
+    }
+</style>
+
+<div class="container mt-4 animate-fade-in" style="max-width: 860px;">
+    <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+        <h4 class="section-heading m-0">Reporte de ganancias</h4>
+        <div class="d-flex gap-2">
+            <a href="/Delivery/HistorialRutas" class="btn btn-delivery-outline btn-sm">
+                <i data-lucide="arrow-left"></i> Volver al historial
+            </a>
+            <button type="button" class="btn btn-delivery-primary btn-sm" onclick="window.print()">
+                <i data-lucide="printer"></i> Guardar como PDF
+            </button>
+        </div>
+    </div>
+
+    <div class="dashboard-card">
+        <div class="p-4" style="background: var(--fb-navy-900); color: var(--fb-text-inverse);">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <h3 class="m-0" style="color: #fff;">FlashBite Delivery</h3>
+                    <div style="color: rgba(244,247,250,.7); font-size: 13px;">Reporte de entregas y ganancias del repartidor</div>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold" style="color: #fff;">@(repartidor?.Name ?? User.Identity?.Name)</div>
+                    <div style="color: rgba(244,247,250,.7); font-size: 13px;">@(repartidor?.TypeVehicle ?? "") @(repartidor?.LicensePlate ?? "")</div>
+                    <div style="color: rgba(244,247,250,.7); font-size: 13px;">Generado: @DateTime.Now.ToString("dd/MM/yyyy HH:mm")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4">
+            <!-- Totales -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-3 col-6">
+                    <div class="metric-panel-card">
+                        <div class="metric-number">@Model.Count</div>
+                        <div class="metric-text">Entregas</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="metric-panel-card">
+                        <div class="metric-number">$@totalGanancias.ToString("F2")</div>
+                        <div class="metric-text">Ganancia total</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="metric-panel-card">
+                        <div class="metric-number">@kmRecorridos.ToString("F1") km</div>
+                        <div class="metric-text">Distancia recorrida</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="metric-panel-card">
+                        <div class="metric-number">$@totalVendido.ToString("F2")</div>
+                        <div class="metric-text">Valor entregado</div>
+                    </div>
+                </div>
+            </div>
+
+            <table class="table table-delivery m-0" style="border: 1px solid var(--fb-border);">
+                <thead>
+                    <tr>
+                        <th>Pedido</th>
+                        <th>Fecha</th>
+                        <th>Restaurante</th>
+                        <th class="text-end">Distancia</th>
+                        <th class="text-end">Total pedido</th>
+                        <th class="text-end">Ganancia envío</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Any())
+                    {
+                        foreach (var order in Model)
+                        {
+                            <tr>
+                                <td><strong>@order.Id</strong></td>
+                                <td style="white-space: nowrap;">@order.DateOrder.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@(order.Restaurant?.Name ?? "—")</td>
+                                <td class="text-end">@order.Distance.ToString("F2") km</td>
+                                <td class="text-end" style="font-variant-numeric: tabular-nums;">$@order.Total.ToString("F2")</td>
+                                <td class="text-end fw-bold" style="font-variant-numeric: tabular-nums;">$@GananciaDe(order).ToString("F2")</td>
+                            </tr>
+                        }
+                        <tr style="border-top: 2px solid var(--fb-text);">
+                            <td colspan="5" class="fw-bold">TOTAL GANANCIAS</td>
+                            <td class="text-end fw-bold" style="font-size: 16px;">$@totalGanancias.ToString("F2")</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr><td colspan="6" class="text-center text-muted py-3">Aún no tienes entregas completadas.</td></tr>
+                    }
+                </tbody>
+            </table>
+
+            <p class="text-muted small mt-3 mb-0">
+                La ganancia por envío corresponde a la tarifa de $1.50 por kilómetro cobrada al cliente en cada pedido entregado.
+            </p>
+        </div>
+    </div>
+</div>

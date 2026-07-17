@@ -32,12 +32,15 @@ public class DeliveryTrackingService : IDeliveryTrackingService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DeliveryTrackingService> _logger;
 
-    private const double SpeedMetersPerSecond = 10.0; // ~36 km/h (moto urbana)
-    // Emisión cada 1 s: sincronizada con la transición CSS de 0.8 s del marcador
-    // en TrackOrder.cshtml (el icono termina de deslizarse justo antes del
-    // siguiente dato => movimiento continuo sin teletransportes).
+    // SIMULACIÓN DE DEMO: cada tramo (repartidor→restaurante y
+    // restaurante→cliente) dura un tiempo FIJO de 20 s, sin importar la
+    // distancia; entre ambos hay una espera de 20 s mientras el restaurante
+    // "prepara" el pedido. Así el recorrido siempre es visible en el mapa.
+    private const double LegDurationSeconds = 20.0;
+    private const double PrepSeconds = 20.0;
+    // Emisión cada 1 s: sincronizada con el panTo animado del mapa.
     private const int TickMilliseconds = 1000;
-    private const int PersistEveryTicks = 5;          // guarda en BD cada ~5 s
+    private const int PersistEveryTicks = 3;          // guarda en BD cada ~3 s
 
     private sealed class ActiveRun
     {
@@ -80,6 +83,8 @@ public class DeliveryTrackingService : IDeliveryTrackingService
                 break;
             case "Entregado":
             case "Cancelado":
+            case "CancelacionSolicitada": // pausa mientras el admin decide
+            case "Reportado":
                 Stop(orderId);
                 break;
         }
@@ -163,11 +168,12 @@ public class DeliveryTrackingService : IDeliveryTrackingService
                 }
                 else
                 {
-                    // El tramo hacia el restaurante solo existe si hay un repartidor
-                    // asignado con ubicación propia (regla del flujo de entrega).
-                    if (order.Delivery?.Latitude == null || order.Delivery.Longitude == null) return;
-                    fromLat = order.Delivery.Latitude.Value;
-                    fromLng = order.Delivery.Longitude.Value;
+                    if (order.Delivery == null) return; // sin repartidor no hay recorrido
+                    // Posición REAL del repartidor (persistida en su última entrega).
+                    // Si nunca ha repartido, arranca desde un punto plausible de la
+                    // ciudad a ~1 km del restaurante, nunca desde el restaurante mismo.
+                    fromLat = order.Delivery.Latitude ?? restLat + 0.0080;
+                    fromLng = order.Delivery.Longitude ?? restLng - 0.0060;
                     toLat = restLat; toLng = restLng;
                     phase = "to_restaurant";
                 }
@@ -184,7 +190,6 @@ public class DeliveryTrackingService : IDeliveryTrackingService
             await _hub.Clients.Group(Group(orderId)).SendAsync("ReceiveRoute", phase, route, ct);
 
             var cum = CumulativeDistances(route);
-            double total = Math.Max(1.0, cum[^1]);
             var started = DateTime.UtcNow;
             int tick = 0;
 
@@ -193,8 +198,9 @@ public class DeliveryTrackingService : IDeliveryTrackingService
 
             while (!ct.IsCancellationRequested && !skipTravel)
             {
-                double traveled = (DateTime.UtcNow - started).TotalSeconds * SpeedMetersPerSecond;
-                double frac = Math.Min(1.0, traveled / total);
+                // Interpolación por TIEMPO: el tramo completo dura LegDurationSeconds,
+                // así el movimiento siempre es visible sin importar la distancia real.
+                double frac = Math.Min(1.0, (DateTime.UtcNow - started).TotalSeconds / LegDurationSeconds);
                 var (lat, lng) = PointAt(route, cum, frac);
 
                 run.Lat = lat; run.Lng = lng; run.Progress = frac;
@@ -213,8 +219,37 @@ public class DeliveryTrackingService : IDeliveryTrackingService
 
             if (phase == "to_restaurant")
             {
+                // Llegó al restaurante: el pedido pasa a "Preparando" y el
+                // repartidor espera PrepSeconds a que el local se lo entregue.
                 run.Phase = "at_restaurant";
                 await _hub.Clients.Group(Group(orderId)).SendAsync("ReceivePhase", "at_restaurant", ct);
+
+                using (var scope = _scopeFactory.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                    var order = db.Orders.FirstOrDefault(o => o.Id == orderId);
+                    if (order == null || order.Status != "Aceptado") return; // el estado cambió por fuera
+                    order.Status = "Preparando";
+                    db.SaveChanges();
+                }
+                await _hub.Clients.Group(Group(orderId)).SendAsync("ReceiveStatus", "Preparando", ct);
+
+                await Task.Delay(TimeSpan.FromSeconds(PrepSeconds), ct);
+
+                // Pedido listo: sale automáticamente hacia el cliente (si nadie
+                // cambió el estado durante la preparación).
+                using (var scope = _scopeFactory.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                    var order = db.Orders.FirstOrDefault(o => o.Id == orderId);
+                    if (order == null || order.Status != "Preparando") return;
+                    order.Status = "En Camino";
+                    db.SaveChanges();
+                }
+                await _hub.Clients.Group(Group(orderId)).SendAsync("ReceiveStatus", "En Camino", ct);
+
+                // Tramo final dentro del mismo run (misma cancelación).
+                await RunLegAsync(orderId, toClient: true, run, ct);
             }
             else
             {
@@ -282,7 +317,7 @@ public class DeliveryTrackingService : IDeliveryTrackingService
 
             var client = _httpClientFactory.CreateClient("osrm");
             client.DefaultRequestHeaders.Add("User-Agent", "FlashBiteDeliveryApp/1.0");
-            client.Timeout = TimeSpan.FromSeconds(12);
+            client.Timeout = TimeSpan.FromSeconds(5);
             using var resp = await client.GetAsync(url, ct);
             if (resp.IsSuccessStatusCode)
             {

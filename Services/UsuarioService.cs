@@ -47,7 +47,9 @@ public class UsuarioService : IUsuarioService
         delivery.Rating = 5.0;
 
         _context.Deliveries.Add(delivery);
-        _context.Entry(delivery).Property<bool>("Activo").CurrentValue = true;
+        // Aprobación del administrador: el repartidor (y su vehículo) queda
+        // INACTIVO hasta que el admin lo apruebe en Gestión de Repartidores.
+        _context.Entry(delivery).Property<bool>("Activo").CurrentValue = false;
         await _context.SaveChangesAsync();
         return delivery;
     }
@@ -331,6 +333,14 @@ public class UsuarioService : IUsuarioService
         if (usuario == null)
         {
             throw new KeyNotFoundException("Usuario no encontrado.");
+        }
+
+        // Las cuentas de repartidor las aprueba/suspende SOLO el administrador
+        // (Gestión de Repartidores); el autodesbloqueo las saltaría.
+        if (usuario is Delivery)
+        {
+            throw new InvalidOperationException(
+                "Las cuentas de repartidor las activa un administrador. Contacta al soporte de FlashBite.");
         }
 
         _context.Entry(usuario).Property<bool>("Activo").CurrentValue = true;
