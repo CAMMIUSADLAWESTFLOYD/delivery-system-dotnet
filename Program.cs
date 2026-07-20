@@ -37,6 +37,8 @@ builder.Services.AddScoped<delivery_system_dotnet.Interfaces.IOrderManager, Prox
 builder.Services.AddSignalR();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IDeliveryTrackingService, DeliveryTrackingService>();
+builder.Services.AddSingleton<INotificationService, NotificationService>();
+builder.Services.AddScoped<IRiderAssignmentService, RiderAssignmentService>();
 
 // 4. Configurar Autenticación por Cookies (para MVC)
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -62,7 +64,15 @@ builder.Services.AddSession(options =>
 builder.Services.AddControllersWithViews(options =>
 {
     options.ModelBinderProviders.Insert(0, new delivery_system_dotnet.Binders.InvariantDoubleBinderProvider());
+
+    // Protección CSRF: exige el token antiforgery en TODA petición que cambie
+    // estado (POST/PUT/DELETE). Los GET no lo requieren. El token lo inyecta el
+    // _Layout en cada formulario (y por cabecera X-CSRF-TOKEN en los envíos AJAX).
+    options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute());
 });
+
+// Permite enviar el token también por cabecera (para peticiones fetch/AJAX).
+builder.Services.AddAntiforgery(o => o.HeaderName = "X-CSRF-TOKEN");
 
 var app = builder.Build();
 
@@ -124,7 +134,7 @@ using (var scope = app.Services.CreateScope())
                 TypeVehicle = "Motocicleta Honda Cargo",
                 LicensePlate = "MOTO-456",
                 Status = true,
-                Rating = 4.8,
+                Rating = 0.0, // sin calificación hasta que un cliente lo puntúe
                 Comission = 150.00,
                 Latitude = 0.3480,
                 Longitude = -78.1210
@@ -196,9 +206,20 @@ app.Use(async (ctx, next) =>
 {
     ctx.Response.OnStarting(() =>
     {
+        // Cabeceras de seguridad (defense-in-depth) en TODAS las respuestas:
+        //  - nosniff: el navegador no "adivina" el tipo de contenido, evitando
+        //    que un dato subido se interprete como script (inyección por MIME).
+        //  - X-Frame-Options: la página no se puede incrustar en un <iframe>
+        //    ajeno (protege contra clickjacking).
+        //  - Referrer-Policy: no filtrar la URL completa a sitios externos.
+        var h = ctx.Response.Headers;
+        h["X-Content-Type-Options"] = "nosniff";
+        h["X-Frame-Options"] = "SAMEORIGIN";
+        h["Referrer-Policy"] = "no-referrer";
+
         if ((ctx.Response.ContentType ?? "").Contains("text/html"))
         {
-            ctx.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+            h.CacheControl = "no-cache, no-store, must-revalidate";
         }
         return Task.CompletedTask;
     });
@@ -220,6 +241,9 @@ app.MapControllerRoute(
 
 // Hub de SignalR para el seguimiento del repartidor en tiempo real
 app.MapHub<TrackingHub>("/hubs/tracking");
+
+// Recuperar recorridos que estaban activos si el servidor fue reiniciado.
+app.Services.GetRequiredService<IDeliveryTrackingService>().ResumeActiveDeliveries();
 
 app.Run();
 
@@ -245,9 +269,9 @@ static void ResetDatabaseCompletely(ApplicationDbContext context)
 
         // 2. Inserción de Restaurantes reales de Ibarra, Imbabura, Ecuador.
         //    Imágenes: URLs verificadas de Unsplash/Pexels (libres de uso).
-        var estelita = new Restaurant { Name = "La Estelita", Description = "Restaurante mirador con la mejor vista de Ibarra y la laguna de Yahuarcocha. Cocina de autor con ingredientes de la sierra.", Address = "Km 5 vía a Yuracrucito, mirador de Yahuarcocha, Ibarra", Phone = "062951190", Category = "Gourmet", Latitude = 0.3672, Longitude = -78.0958, ImagePath = "/images/catalog/u1559339352-11d035aa65de-1200.jpg", OpeningHour = new TimeSpan(12, 0, 0), ClosingHour = new TimeSpan(22, 0, 0), IsActive = true };
-        var casona = new Restaurant { Name = "La Casona Ibarreña", Description = "Comida típica de la sierra en una casona del centro histórico: hornado, llapingachos y fritada de tradición.", Address = "Bolívar 7-59 y Pedro Moncayo, centro histórico, Ibarra", Phone = "062958721", Category = "Comida Típica", Latitude = 0.3496, Longitude = -78.1195, ImagePath = "/images/catalog/u1552566626-52f8b828add9-1200.jpg", OpeningHour = new TimeSpan(9, 0, 0), ClosingHour = new TimeSpan(21, 0, 0), IsActive = true };
-        var ajavi = new Restaurant { Name = "Hostería Ajaví", Description = "Restaurante de la tradicional Hostería Ajaví: cocina internacional, pizzas artesanales y pastas en ambiente familiar.", Address = "Av. Mariano Acosta 16-38, Ibarra", Phone = "062955221", Category = "Internacional", Latitude = 0.3438, Longitude = -78.129, ImagePath = "/images/catalog/u1517248135467-4c7edcad34c4-1200.jpg", OpeningHour = new TimeSpan(7, 0, 0), ClosingHour = new TimeSpan(22, 30, 0), IsActive = true };
+        var estelita = new Restaurant { Name = "La Estelita", Description = "Restaurante mirador con la mejor vista de Ibarra y la laguna de Yahuarcocha. Cocina de autor con ingredientes de la sierra.", Address = "Km 5 vía a Yuracrucito, mirador de Yahuarcocha, Ibarra", Phone = "062951190", Category = "Gourmet", Latitude = 0.3672, Longitude = -78.0958, ImagePath = "/images/catalog/u1559339352-11d035aa65de-1200.jpg", OpeningHour = new TimeSpan(12, 0, 0), ClosingHour = new TimeSpan(22, 0, 0), IsActive = true, Rating = 4.8, RatingCount = 125 };
+        var casona = new Restaurant { Name = "La Casona Ibarreña", Description = "Comida típica de la sierra en una casona del centro histórico: hornado, llapingachos y fritada de tradición.", Address = "Bolívar 7-59 y Pedro Moncayo, centro histórico, Ibarra", Phone = "062958721", Category = "Comida Típica", Latitude = 0.3496, Longitude = -78.1195, ImagePath = "/images/catalog/u1552566626-52f8b828add9-1200.jpg", OpeningHour = new TimeSpan(9, 0, 0), ClosingHour = new TimeSpan(21, 0, 0), IsActive = true, Rating = 4.5, RatingCount = 89 };
+        var ajavi = new Restaurant { Name = "Hostería Ajaví", Description = "Restaurante de la tradicional Hostería Ajaví: cocina internacional, pizzas artesanales y pastas en ambiente familiar.", Address = "Av. Mariano Acosta 16-38, Ibarra", Phone = "062955221", Category = "Internacional", Latitude = 0.3438, Longitude = -78.129, ImagePath = "/images/catalog/u1517248135467-4c7edcad34c4-1200.jpg", OpeningHour = new TimeSpan(7, 0, 0), ClosingHour = new TimeSpan(22, 30, 0), IsActive = true, Rating = 4.2, RatingCount = 42 };
         var porton = new Restaurant { Name = "El Portón", Description = "Sabores ibarreños en un patio tradicional: hornado, carne colorada y canelazo.", Address = "Pedro Moncayo 4-26 y Sucre, Ibarra", Phone = "062609431", Category = "Comida Típica", Latitude = 0.3512, Longitude = -78.1178, ImagePath = "/images/catalog/u1555396273-367ea4eb4db5-1200.jpg", OpeningHour = new TimeSpan(10, 0, 0), ClosingHour = new TimeSpan(21, 0, 0), IsActive = true };
         var choza = new Restaurant { Name = "La Choza", Description = "Asados al carbón, pollos al horno y platos criollos en un ambiente campestre.", Address = "Av. Teodoro Gómez de la Torre 9-45, Ibarra", Phone = "062640173", Category = "Asados", Latitude = 0.3446, Longitude = -78.1226, ImagePath = "/images/catalog/u1521017432531-fbd92d768814-1200.jpg", OpeningHour = new TimeSpan(11, 0, 0), ClosingHour = new TimeSpan(21, 30, 0), IsActive = true };
         var rosalia = new Restaurant { Name = "Helados de Paila Rosalía Suárez", Description = "La heladería más tradicional de Ibarra, desde 1896: helados de paila batidos a mano en bronce sobre hielo.", Address = "Olmedo 7-79 y Oviedo, Ibarra", Phone = "062958778", Category = "Heladería y Postres", Latitude = 0.3507, Longitude = -78.1198, ImagePath = "/images/catalog/u1516559828984-fb3b99548b21-1200.jpg", OpeningHour = new TimeSpan(8, 0, 0), ClosingHour = new TimeSpan(19, 30, 0), IsActive = true };

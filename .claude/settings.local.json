@@ -43,7 +43,15 @@
       "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT Id, Rating FROM Orders WHERE Id='TEST-RATE01'; SELECT Dni, Rating FROM Persons WHERE Dni='DELIV-1';\" -W)",
       "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; DELETE FROM Orders WHERE Id IN \\('TEST-RATE01','TEST-MAP01'\\); UPDATE Persons SET Rating=4.8 WHERE Dni='DELIV-1'; SELECT 'limpieza ok' AS r;\" -W)",
       "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT Code, [Percent], Active FROM DiscountCodes; SELECT COL_LENGTH\\('Orders','DeliveryFee'\\) AS FeeCol, COL_LENGTH\\('Orders','CancelRequestReason'\\) AS CancelCol;\" -W)",
-      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT o.Id, o.Status, o.Distance, o.DeliveryFee, o.DiscountCode, o.DiscountAmount, o.Total, o.PaymentStatus, p.PaymentMethod FROM Orders o LEFT JOIN Payments p ON p.OrderId = o.Id WHERE o.Id = 'ORD-50B9F21C';\" -W)"
+      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT o.Id, o.Status, o.Distance, o.DeliveryFee, o.DiscountCode, o.DiscountAmount, o.Total, o.PaymentStatus, p.PaymentMethod FROM Orders o LEFT JOIN Payments p ON p.OrderId = o.Id WHERE o.Id = 'ORD-50B9F21C';\" -W)",
+      "Bash(git rm *)",
+      "Bash(curl -s -o /dev/null -w \"sitio publico: %{http_code}\\\\n\" -H \"bypass-tunnel-reminder: 1\" https://flashbite.loca.lt/Auth/Login)",
+      "Bash(curl -s https://loca.lt/mytunnelpassword)",
+      "Bash(echo \"password visitantes \\(IP publica\\): $\\(curl -s https://loca.lt/mytunnelpassword\\)\")",
+      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT CASE WHEN Status='En Camino' AND CurrentLatitude BETWEEN 0.3385 AND 0.3395 THEN 'LLEGO' ELSE Status END FROM Orders WHERE Id='ORD-CECA29DF';\" -W -h -1)",
+      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT Status, PaymentStatus, CAST\\(DeliveryFee AS decimal\\(6,2\\)\\) AS Fee FROM Orders WHERE Id='ORD-CECA29DF';\" -W)",
+      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; SELECT TOP 1 Id FROM Products WHERE RestaurantId=242; SELECT TOP 1 Id FROM Products WHERE RestaurantId=246;\" -W -h -1)",
+      "Bash(sqlcmd -S localhost -d FlashBiteDB -E -Q \"SET NOCOUNT ON; UPDATE Restaurants SET OpeningHour='12:00:00', ClosingHour='22:00:00' WHERE Id=242; DELETE FROM Payments WHERE OrderId IN \\('ORD-88BE9A4D','ORD-A561B075'\\); DELETE p FROM Products p WHERE p.OrderDetailsId IN \\(SELECT Id FROM OrderDetails WHERE OrderId IN \\('ORD-88BE9A4D','ORD-A561B075'\\)\\); SELECT 'horario restaurado' AS r;\" -W)"
     ]
   }
 }

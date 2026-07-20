@@ -58,8 +58,10 @@
                                         <div class="d-flex align-items-center gap-2">
                                             @if (order.Status == "PendienteRepartidor")
                                             {
-                                                <form method="post" action="/Delivery/AceptarPedido" class="d-inline">
+                                                <form method="post" action="/Delivery/AceptarPedido" class="d-inline accept-order-form">
                                                     <input type="hidden" name="orderId" value="@order.Id" />
+                                                    <input type="hidden" name="latitude" />
+                                                    <input type="hidden" name="longitude" />
                                                     <button type="submit" class="btn btn-sm btn-success text-white">Aceptar</button>
                                                 </form>
                                                 <form method="post" action="/Delivery/RechazarPedido" class="d-inline">
@@ -69,19 +71,17 @@
                                             }
                                             else if (order.Status == "Aceptado")
                                             {
-                                                <form method="post" action="/Delivery/UpdateDeliveryStatus" class="d-inline">
-                                                    <input type="hidden" name="orderId" value="@order.Id" />
-                                                    <input type="hidden" name="newStatus" value="En Camino" />
-                                                    <button type="submit" class="btn btn-sm btn-info text-white">Marcar en camino</button>
-                                                </form>
+                                                <span class="badge bg-info text-white">En ruta al restaurante</span>
+                                            }
+                                            else if (order.Status == "Preparando")
+                                            {
+                                                <span class="badge bg-warning text-dark">Esperando el pedido</span>
                                             }
                                             else if (order.Status == "En Camino")
                                             {
-                                                <form method="post" action="/Delivery/UpdateDeliveryStatus" class="d-inline">
-                                                    <input type="hidden" name="orderId" value="@order.Id" />
-                                                    <input type="hidden" name="newStatus" value="Entregado" />
-                                                    <button type="submit" class="btn btn-sm btn-success">Marcar entregado</button>
-                                                </form>
+                                                <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#cobroModal-@order.Id">
+                                                    <i data-lucide="dollar-sign"></i> Cobrar y Entregar
+                                                </button>
                                             }
 
                                             <a href="/Delivery/VerMapa?orderId=@order.Id" class="btn btn-sm btn-delivery-primary">
@@ -99,53 +99,6 @@
                                                 <span class="badge-delivery badge-delivery-warning" title="@order.CancelRequestReason">Esperando decisión del admin</span>
                                             }
                                         </div>
-
-                                        <!-- Modal Solicitar Cancelación (la resuelve el administrador) -->
-                                        <div class="modal fade" id="cancelModal-@order.Id" tabindex="-1" aria-hidden="true">
-                                            <div class="modal-dialog">
-                                                <div class="modal-content">
-                                                    <form method="post" action="/Delivery/SolicitarCancelacion">
-                                                        <input type="hidden" name="orderId" value="@order.Id" />
-                                                        <div class="modal-header">
-                                                            <h5 class="modal-title font-title">Solicitar cancelación - @order.Id</h5>
-                                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-                                                        </div>
-                                                        <div class="modal-body">
-                                                            <p class="text-muted small">La cancelación la aprueba el administrador. Mientras tanto, el recorrido queda en pausa.</p>
-                                                            <label class="form-label">Motivo de la solicitud</label>
-                                                            <textarea name="motivo" class="form-control" rows="3" required maxlength="200" placeholder="Ej.: el cliente no responde, dirección inaccesible, daño del vehículo..."></textarea>
-                                                        </div>
-                                                        <div class="modal-footer">
-                                                            <button type="button" class="btn btn-delivery-outline btn-sm" data-bs-dismiss="modal">Cerrar</button>
-                                                            <button type="submit" class="btn btn-destructive btn-sm">Enviar solicitud</button>
-                                                        </div>
-                                                    </form>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Modal Incidencia -->
-                                        <div class="modal fade" id="issueModal-@order.Id" tabindex="-1" aria-hidden="true">
-                                            <div class="modal-dialog">
-                                                <div class="modal-content">
-                                                    <form method="post" action="/Delivery/ReportIssue">
-                                                        <input type="hidden" name="orderId" value="@order.Id" />
-                                                        <div class="modal-header">
-                                                            <h5 class="modal-title font-title text-danger">Reportar Incidente - Pedido @order.Id</h5>
-                                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                        </div>
-                                                        <div class="modal-body">
-                                                            <label class="form-label">Detalle del Inconveniente</label>
-                                                            <textarea name="issueDescription" class="form-control" rows="3" required placeholder="Describe el problema (dirección incorrecta, accidente, retraso...)"></textarea>
-                                                        </div>
-                                                        <div class="modal-footer">
-                                                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
-                                                            <button type="submit" class="btn btn-danger btn-sm">Reportar Inconveniente</button>
-                                                        </div>
-                                                    </form>
-                                                </div>
-                                            </div>
-                                        </div>
                                     </td>
                                 </tr>
                             }
@@ -162,3 +115,162 @@
         </div>
     </div>
 </div>
+
+<!-- ============================================================
+     Modales FUERA de la tabla: dentro de .table-responsive (overflow)
+     Bootstrap los recorta y la página queda "congelada" con el fondo
+     gris. Aquí se renderizan a nivel de página y funcionan siempre.
+     ============================================================ -->
+@if (Model != null)
+{
+    foreach (var order in Model)
+    {
+        <!-- Modal Solicitar Cancelación (la resuelve el administrador) -->
+        <div class="modal fade" id="cancelModal-@order.Id" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post" action="/Delivery/SolicitarCancelacion">
+                        <input type="hidden" name="orderId" value="@order.Id" />
+                        <div class="modal-header">
+                            <h5 class="modal-title font-title">Solicitar cancelación - @order.Id</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="text-muted small">La cancelación la aprueba el administrador. Mientras tanto, el recorrido queda en pausa.</p>
+                            <label class="form-label">Motivo de la solicitud</label>
+                            <textarea name="motivo" class="form-control" rows="3" required maxlength="200" placeholder="Ej.: el cliente no responde, dirección inaccesible, daño del vehículo..."></textarea>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-delivery-outline btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                            <button type="submit" class="btn btn-destructive btn-sm">Enviar solicitud</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Incidencia -->
+        <div class="modal fade" id="issueModal-@order.Id" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post" action="/Delivery/ReportIssue">
+                        <input type="hidden" name="orderId" value="@order.Id" />
+                        <div class="modal-header">
+                            <h5 class="modal-title font-title text-danger">Reportar Incidente - Pedido @order.Id</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <label class="form-label">Detalle del Inconveniente</label>
+                            <textarea name="issueDescription" class="form-control" rows="3" required placeholder="Describe el problema (dirección incorrecta, accidente, retraso...)"></textarea>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                            <button type="submit" class="btn btn-danger btn-sm">Reportar Inconveniente</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Cobro y Entrega -->
+        <div class="modal fade" id="cobroModal-@order.Id" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post" action="/Delivery/UpdateDeliveryStatus">
+                        <input type="hidden" name="orderId" value="@order.Id" />
+                        <input type="hidden" name="newStatus" value="Entregado" />
+                        <div class="modal-header">
+                            <h5 class="modal-title font-title text-success">Registrar Cobro y Entregar - Pedido @order.Id</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-warning">
+                                <i data-lucide="alert-circle" class="me-2"></i>
+                                <strong>Atención:</strong> Asegúrate de recibir el pago de <strong>$@order.Total.ToString("F2")</strong> del cliente antes de entregar el pedido.
+                            </div>
+                            <p class="mb-0">¿Confirmas que has cobrado correctamente este pedido y se lo has entregado al cliente?</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-success btn-sm">Sí, cobrado y entregado</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@section Scripts {
+    <script>
+        // ============================================================
+        // Auto-refresco: la simulación avanza el estado de los pedidos
+        // (Aceptado -> Preparando -> En Camino) sin que el repartidor
+        // toque nada. Cada 5 s se consulta el estado real y, si cambió,
+        // se recarga la lista para mostrar el botón correcto (p. ej.
+        // "Cobrar y Entregar"). Nunca se recarga con un modal abierto.
+        // ============================================================
+        const estadosRender = {
+            @foreach (var order in Model ?? new List<delivery_system_dotnet.Models.Order>())
+            {
+                @:'@order.Id': '@order.Status',
+            }
+        };
+        setInterval(async function () {
+            if (document.querySelector('.modal.show')) return; // no interrumpir al usuario
+
+            // (a) ¿Me asignaron un pedido NUEVO (o se liberó uno)? Comparamos el
+            // conjunto de IDs asignados con los que se pintaron al cargar; si
+            // cambió, recargamos para mostrar el pedido nuevo con su botón "Aceptar".
+            try {
+                const r = await fetch('/Delivery/PedidosActivosIds', { cache: 'no-store' });
+                if (r.ok) {
+                    const ids = await r.json();
+                    const actuales = Object.keys(estadosRender);
+                    const cambio = ids.length !== actuales.length || ids.some(id => !(id in estadosRender));
+                    if (cambio) { location.reload(); return; }
+                }
+            } catch (e) { /* transitorio */ }
+
+            // (b) ¿Cambió el estado de un pedido ya listado? (Aceptado -> Preparando
+            // -> En Camino desde la simulación) para mostrar el botón correcto.
+            for (const oid in estadosRender) {
+                try {
+                    const r = await fetch('/Delivery/TrackingStatus?orderId=' + encodeURIComponent(oid), { cache: 'no-store' });
+                    if (!r.ok) continue;
+                    const d = await r.json();
+                    if (d.status && d.status !== estadosRender[oid]) { location.reload(); return; }
+                } catch (e) { /* transitorio */ }
+            }
+        }, 5000);
+
+        // Captura la ubicación real del dispositivo justo antes de aceptar.
+        // Si el usuario deniega el permiso, el flujo continúa usando la última
+        // ubicación persistida del repartidor.
+        document.querySelectorAll('.accept-order-form').forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                if (form.dataset.locationReady === 'true' || !navigator.geolocation) return;
+
+                event.preventDefault();
+                const button = form.querySelector('button[type="submit"]');
+                if (button) button.disabled = true;
+
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    form.querySelector('[name="latitude"]').value = position.coords.latitude;
+                    form.querySelector('[name="longitude"]').value = position.coords.longitude;
+                    enviar();
+                }, enviar, {
+                    enableHighAccuracy: true,
+                    timeout: 7000,
+                    maximumAge: 15000
+                });
+
+                function enviar() {
+                    form.dataset.locationReady = 'true';
+                    if (button) button.disabled = false;
+                    form.requestSubmit();
+                }
+            });
+        });
+    </script>
+}

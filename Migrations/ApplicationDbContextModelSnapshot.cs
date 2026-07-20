@@ -55,7 +55,7 @@ namespace delivery_system_dotnet.Migrations
 
                     b.HasIndex("UsuarioDni");
 
-                    b.ToTable("CodigosVerificacion");
+                    b.ToTable("CodigosVerificacion", (string)null);
                 });
 
             modelBuilder.Entity("delivery_system_dotnet.Models.DiscountCode", b =>
@@ -79,7 +79,7 @@ namespace delivery_system_dotnet.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DiscountCodes");
+                    b.ToTable("DiscountCodes", (string)null);
                 });
 
             modelBuilder.Entity("delivery_system_dotnet.Models.Order", b =>
@@ -160,7 +160,7 @@ namespace delivery_system_dotnet.Migrations
 
                     b.HasIndex("RestaurantId");
 
-                    b.ToTable("Orders");
+                    b.ToTable("Orders", (string)null);
                 });
 
             modelBuilder.Entity("delivery_system_dotnet.Models.OrderDetails", b =>
@@ -174,17 +174,26 @@ namespace delivery_system_dotnet.Migrations
                     b.Property<string>("OrderId")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProductName")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
 
                     b.Property<double>("SubTotal")
                         .HasColumnType("float");
 
+                    b.Property<double>("UnitPrice")
+                        .HasColumnType("float");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId");
 
-                    b.ToTable("OrderDetails");
+                    b.ToTable("OrderDetails", (string)null);
                 });
 
             modelBuilder.Entity("delivery_system_dotnet.Models.Payment", b =>
@@ -196,9 +205,25 @@ namespace delivery_system_dotnet.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Reference")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<bool>("Refunded")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("RefundedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("Verified")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("OrderId");
 
-                    b.ToTable("Payments");
+                    b.ToTable("Payments", (string)null);
                 });
 
             modelBuilder.Entity("delivery_system_dotnet.Models.Person", b =>
@@ -250,7 +275,7 @@ namespace delivery_system_dotnet.Migrations
                     b.HasIndex("Mail")
                         .IsUnique();
 
-                    b.ToTable("Persons");
+                    b.ToTable("Persons", (string)null);
 
                     b.HasDiscriminator<string>("Discriminator").HasValue("Person");
 
@@ -296,7 +321,7 @@ namespace delivery_system_dotnet.Migrations
 
                     b.HasIndex("RestaurantId");
 
-                    b.ToTable("Products");
+                    b.ToTable("Products", (string)null);
                 });
 
             modelBuilder.Entity("delivery_system_dotnet.Models.Restaurant", b =>
@@ -351,7 +376,7 @@ namespace delivery_system_dotnet.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Restaurants");
+                    b.ToTable("Restaurants", (string)null);
                 });
 
             modelBuilder.Entity("delivery_system_dotnet.Models.Admin", b =>

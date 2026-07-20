@@ -59,28 +59,28 @@
                     <!-- Acciones de estado -->
                     @if (Model.Status == "Aceptado")
                     {
-                        <form method="post" action="/Delivery/UpdateDeliveryStatus">
-                            <input type="hidden" name="orderId" value="@Model.Id" />
-                            <input type="hidden" name="newStatus" value="En Camino" />
-                            <button type="submit" class="btn btn-delivery-primary w-100">
-                                <i data-lucide="bike"></i> Marcar en camino
-                            </button>
-                        </form>
+                        <p class="text-muted small mb-0">En ruta al restaurante. El estado cambiará automáticamente al llegar.</p>
+                    }
+                    else if (Model.Status == "Preparando")
+                    {
+                        <p class="text-muted small mb-0">Esperando que el restaurante entregue el pedido.</p>
                     }
                     else if (Model.Status == "En Camino")
                     {
-                        <form method="post" action="/Delivery/UpdateDeliveryStatus">
+                        <form method="post" action="/Delivery/UpdateDeliveryStatus" onsubmit="return confirm('ATENCIÓN: ¿Confirmas que has COBRADO correctamente este pedido ($@Model.Total.ToString("F2")) y se lo has entregado al cliente?');">
                             <input type="hidden" name="orderId" value="@Model.Id" />
                             <input type="hidden" name="newStatus" value="Entregado" />
-                            <button type="submit" class="btn btn-delivery-primary w-100">
-                                <i data-lucide="check-check"></i> Marcar entregado
+                            <button type="submit" class="btn btn-success w-100">
+                                <i data-lucide="dollar-sign"></i> Registrar Cobro y Entregar
                             </button>
                         </form>
                     }
                     else if (Model.Status == "PendienteRepartidor")
                     {
-                        <form method="post" action="/Delivery/AceptarPedido">
+                        <form method="post" action="/Delivery/AceptarPedido" class="accept-order-form">
                             <input type="hidden" name="orderId" value="@Model.Id" />
+                            <input type="hidden" name="latitude" />
+                            <input type="hidden" name="longitude" />
                             <button type="submit" class="btn btn-delivery-primary w-100">
                                 <i data-lucide="check"></i> Aceptar pedido
                             </button>
@@ -109,6 +109,23 @@
     <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
     <script>
+        document.querySelectorAll('.accept-order-form').forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                if (form.dataset.locationReady === 'true' || !navigator.geolocation) return;
+                event.preventDefault();
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    form.querySelector('[name="latitude"]').value = position.coords.latitude;
+                    form.querySelector('[name="longitude"]').value = position.coords.longitude;
+                    enviar();
+                }, enviar, { enableHighAccuracy: true, timeout: 7000, maximumAge: 15000 });
+
+                function enviar() {
+                    form.dataset.locationReady = 'true';
+                    form.requestSubmit();
+                }
+            });
+        });
+
         const orderId = "@Model.Id";
 
         // Geofence Imbabura: descarta NaN, ceros y coordenadas fuera de región.
@@ -210,7 +227,7 @@
             const connection = new signalR.HubConnectionBuilder()
                 .withUrl('/hubs/tracking').withAutomaticReconnect().build();
 
-            connection.on('ReceivePosition', function (lat, lng, phase) {
+            function applyTrackedPosition(lat, lng, phase) {
                 if (!coordValida(lat, lng)) return;
                 const p = L.latLng(parseFloat(lat), parseFloat(lng));
                 lastLatLng = p;
@@ -232,17 +249,56 @@
                 document.getElementById('mapHint').innerText = currentPhase === 'to_restaurant'
                     ? 'Dirígete al restaurante a recoger el pedido.'
                     : 'Sigue la ruta marcada hasta el destino del cliente.';
-            });
+            }
+
+            connection.on('ReceivePosition', applyTrackedPosition);
+
+            // ============================================================
+            // Los BOTONES de acción se renderizan en el servidor según el
+            // estado del pedido. Cuando la simulación avanza de estado
+            // (Aceptado -> Preparando -> En Camino), la página se recarga
+            // UNA vez para mostrar el botón correcto (p. ej. "Registrar
+            // Cobro y Entregar" al llegar donde el cliente).
+            // ============================================================
+            const renderedStatus = '@Model.Status';
+            let reloading = false;
+            function syncEstado(status) {
+                if (!status) return;
+                const badge = document.getElementById('estadoBadge');
+                if (badge) badge.innerText = status;
+                if (status !== renderedStatus && !reloading) {
+                    reloading = true;
+                    setTimeout(function () { location.reload(); }, 700);
+                }
+            }
+
+            // Respaldo de un segundo para cuando el túnel público interrumpe
+            // temporalmente WebSockets. Lee la misma posición persistida por SignalR.
+            setInterval(function () {
+                fetch('/Delivery/TrackingStatus?orderId=' + encodeURIComponent(orderId), { cache: 'no-store' })
+                    .then(r => r.ok ? r.json() : null)
+                    .then(d => {
+                        if (!d) return;
+                        syncEstado(d.status);
+                        if (coordValida(d.currentLat, d.currentLng)) {
+                            applyTrackedPosition(d.currentLat, d.currentLng, d.phase);
+                        }
+                    })
+                    .catch(() => { });
+            }, 1000);
 
             connection.on('ReceivePhase', function (phase) {
                 if (phase === 'at_restaurant') {
                     document.getElementById('mapHint').innerText = 'Llegaste al restaurante: espera a que el pedido esté listo.';
                 }
+                if (phase === 'delivered') {
+                    document.getElementById('mapHint').innerText =
+                        'Llegaste al destino: cobra al cliente y registra el cobro para cerrar la entrega.';
+                }
             });
 
             connection.on('ReceiveStatus', function (status) {
-                const badge = document.getElementById('estadoBadge');
-                if (badge) badge.innerText = status;
+                syncEstado(status);
                 if (status === 'Preparando') {
                     document.getElementById('mapHint').innerText = 'El restaurante está preparando el pedido; espera en el local.';
                 }

@@ -127,14 +127,28 @@
                         {
                             foreach (var det in Model.OrderDetails)
                             {
-                                foreach (var prod in det.Products)
+                                @* Pedidos nuevos: snapshot propio del detalle. *@
+                                if (!string.IsNullOrEmpty(det.ProductName))
                                 {
                                     <tr>
-                                        <td>@prod.Name <span class="text-muted small">(@prod.Category)</span></td>
+                                        <td>@det.ProductName</td>
                                         <td class="text-center">@det.Quantity</td>
-                                        <td class="text-end" style="font-variant-numeric: tabular-nums;">$@prod.Price.ToString("F2")</td>
+                                        <td class="text-end" style="font-variant-numeric: tabular-nums;">$@det.UnitPrice.ToString("F2")</td>
                                         <td class="text-end" style="font-variant-numeric: tabular-nums;">$@det.SubTotal.ToString("F2")</td>
                                     </tr>
+                                }
+                                else
+                                {
+                                    @* Pedidos antiguos: relación legada al catálogo. *@
+                                    foreach (var prod in det.Products)
+                                    {
+                                        <tr>
+                                            <td>@prod.Name <span class="text-muted small">(@prod.Category)</span></td>
+                                            <td class="text-center">@det.Quantity</td>
+                                            <td class="text-end" style="font-variant-numeric: tabular-nums;">$@prod.Price.ToString("F2")</td>
+                                            <td class="text-end" style="font-variant-numeric: tabular-nums;">$@det.SubTotal.ToString("F2")</td>
+                                        </tr>
+                                    }
                                 }
                             }
                         }

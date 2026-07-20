@@ -14,6 +14,7 @@ namespace delivery_system_dotnet.Controllers.Api;
 
 [ApiController]
 [Route("api/v1/auth")]
+[Microsoft.AspNetCore.Mvc.IgnoreAntiforgeryToken] // API JSON: no usa formularios con token
 public class AuthApiController : ControllerBase
 {
     private readonly IUsuarioService _usuarioService;
@@ -66,7 +67,11 @@ public class AuthApiController : ControllerBase
         return StatusCode(201, new ApiResponseDto(true, "Repartidor registrado exitosamente.", response));
     }
 
+    // SEGURIDAD: crear administradores requiere ser administrador autenticado.
+    // (El registro público de admins fue eliminado a propósito del flujo web;
+    // este endpoint lo dejaba abierto por API.)
     [HttpPost("registro/admin")]
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
     public async Task<IActionResult> RegistrarAdmin([FromBody] RegistroAdminDto dto)
     {
         if (!ModelState.IsValid)

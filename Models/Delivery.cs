@@ -8,7 +8,9 @@ public class Delivery : Person, ICalculate
     public string TypeVehicle { get; set; } = null!;
     public string LicensePlate { get; set; } = null!;
     public bool Status { get; set; } = true;
-    public double Rating { get; set; } = 5.0;
+    // Un repartidor nuevo arranca SIN calificación (0). Su nota real se calcula
+    // como el promedio de las estrellas que le den los clientes al entregar.
+    public double Rating { get; set; } = 0.0;
     public double Comission { get; set; }
 
     // Ubicación actual del repartidor (para el mapa de seguimiento). Nullable.

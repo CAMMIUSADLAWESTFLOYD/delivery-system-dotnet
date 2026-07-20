@@ -31,16 +31,22 @@ public class DeliveryTrackingService : IDeliveryTrackingService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DeliveryTrackingService> _logger;
+    private readonly INotificationService _notificaciones;
 
-    // SIMULACIÓN DE DEMO: cada tramo (repartidor→restaurante y
-    // restaurante→cliente) dura un tiempo FIJO de 20 s, sin importar la
-    // distancia; entre ambos hay una espera de 20 s mientras el restaurante
-    // "prepara" el pedido. Así el recorrido siempre es visible en el mapa.
-    private const double LegDurationSeconds = 20.0;
-    private const double PrepSeconds = 20.0;
-    // Emisión cada 1 s: sincronizada con el panTo animado del mapa.
-    private const int TickMilliseconds = 1000;
-    private const int PersistEveryTicks = 3;          // guarda en BD cada ~3 s
+    // SIMULACIÓN REALISTA: el repartidor recorre la ruta a velocidad de moto
+    // urbana lenta (~14 km/h: tráfico, semáforos, buscar la dirección). La
+    // duración de cada tramo sale de la LONGITUD REAL de la ruta calle a calle,
+    // acotada para que la demo siga siendo observable: nunca menos de 2 min ni
+    // más de 7 min por tramo. El mínimo alto evita que en los trayectos cortos
+    // de Ibarra el marcador "vuele". Entre ambos tramos el restaurante "prepara"
+    // el pedido durante PrepSeconds.
+    // Tick de 500 ms => pasos cortos y movimiento fluido, sin saltos bruscos.
+    private const double SpeedKmh = 14.0;
+    private const double MinLegSeconds = 120.0;
+    private const double MaxLegSeconds = 420.0;
+    private const double PrepSeconds = 45.0;
+    private const int TickMilliseconds = 500;
+    private const int PersistEveryTicks = 6;          // guarda en BD cada ~3 s
 
     private sealed class ActiveRun
     {
@@ -58,12 +64,24 @@ public class DeliveryTrackingService : IDeliveryTrackingService
         IHubContext<TrackingHub> hub,
         IServiceScopeFactory scopeFactory,
         IHttpClientFactory httpClientFactory,
-        ILogger<DeliveryTrackingService> logger)
+        ILogger<DeliveryTrackingService> logger,
+        INotificationService notificaciones)
     {
         _hub = hub;
         _scopeFactory = scopeFactory;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _notificaciones = notificaciones;
+    }
+
+    // Notifica (toast) al cliente dueño del pedido, si lo hay.
+    private void NotificarClientePedido(string orderId, string titulo, string mensaje)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clientDni = db.Orders.Where(o => o.Id == orderId).Select(o => o.ClientDni).FirstOrDefault();
+        if (!string.IsNullOrEmpty(clientDni))
+            _ = _notificaciones.NotificarUsuarioAsync(clientDni, titulo, mensaje, "/Cliente/SeguimientoPedido?orderId=" + orderId);
     }
 
     private static string Group(string orderId) => "order-" + orderId;
@@ -114,6 +132,40 @@ public class DeliveryTrackingService : IDeliveryTrackingService
             Lng = run.Lng,
             Progress = run.Progress
         };
+    }
+
+    public void ResumeActiveDeliveries()
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var active = db.Orders
+            .Where(o => o.DeliveryDni != null &&
+                        (o.Status == "Aceptado" || o.Status == "Preparando" || o.Status == "En Camino"))
+            .Select(o => new { o.Id, o.Status })
+            .ToList();
+
+        foreach (var order in active)
+        {
+            if (order.Status == "Aceptado") StartLeg(order.Id, toClient: false);
+            else if (order.Status == "En Camino") StartLeg(order.Id, toClient: true);
+            else ResumePreparation(order.Id);
+        }
+    }
+
+    private void ResumePreparation(string orderId)
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(PrepSeconds));
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var order = db.Orders.FirstOrDefault(o => o.Id == orderId);
+            if (order == null || order.Status != "Preparando") return;
+            order.Status = "En Camino";
+            db.SaveChanges();
+            await _hub.Clients.Group(Group(orderId)).SendAsync("ReceiveStatus", "En Camino");
+            StartLeg(orderId, toClient: true);
+        });
     }
 
     private void StartLeg(string orderId, bool toClient)
@@ -170,8 +222,9 @@ public class DeliveryTrackingService : IDeliveryTrackingService
                 {
                     if (order.Delivery == null) return; // sin repartidor no hay recorrido
                     // Posición REAL del repartidor (persistida en su última entrega).
-                    // Si nunca ha repartido, arranca desde un punto plausible de la
-                    // ciudad a ~1 km del restaurante, nunca desde el restaurante mismo.
+                    // La vista de entregas captura la geolocalización del dispositivo
+                    // al aceptar. Para cuentas antiguas sin ubicación se usa un punto
+                    // estable cercano, evitando saltos aleatorios entre simulaciones.
                     fromLat = order.Delivery.Latitude ?? restLat + 0.0080;
                     fromLng = order.Delivery.Longitude ?? restLng - 0.0060;
                     toLat = restLat; toLng = restLng;
@@ -193,14 +246,21 @@ public class DeliveryTrackingService : IDeliveryTrackingService
             var started = DateTime.UtcNow;
             int tick = 0;
 
+            // Duración del tramo según la LONGITUD REAL de la ruta a ~25 km/h,
+            // acotada a [45 s, 4 min] para que la demo siga siendo observable.
+            double legSeconds = Math.Clamp(
+                (cum[^1] / 1000.0) / SpeedKmh * 3600.0, MinLegSeconds, MaxLegSeconds);
+            _logger.LogInformation(
+                "Pedido {OrderId} — tramo {Phase}: {Metros:F0} m a {Vel} km/h => {Seg:F0} s de recorrido.",
+                orderId, phase, cum[^1], SpeedKmh, legSeconds);
+
             // Tramo degenerado (< 10 m): no hay nada que recorrer.
             bool skipTravel = cum[^1] < 10.0;
 
             while (!ct.IsCancellationRequested && !skipTravel)
             {
-                // Interpolación por TIEMPO: el tramo completo dura LegDurationSeconds,
-                // así el movimiento siempre es visible sin importar la distancia real.
-                double frac = Math.Min(1.0, (DateTime.UtcNow - started).TotalSeconds / LegDurationSeconds);
+                // Interpolación por tiempo sobre la geometría real de la ruta.
+                double frac = Math.Min(1.0, (DateTime.UtcNow - started).TotalSeconds / legSeconds);
                 var (lat, lng) = PointAt(route, cum, frac);
 
                 run.Lat = lat; run.Lng = lng; run.Progress = frac;
@@ -233,6 +293,8 @@ public class DeliveryTrackingService : IDeliveryTrackingService
                     db.SaveChanges();
                 }
                 await _hub.Clients.Group(Group(orderId)).SendAsync("ReceiveStatus", "Preparando", ct);
+                NotificarClientePedido(orderId, "Preparando tu pedido",
+                    "El repartidor llegó al restaurante; están preparando tu pedido.");
 
                 await Task.Delay(TimeSpan.FromSeconds(PrepSeconds), ct);
 
@@ -247,26 +309,20 @@ public class DeliveryTrackingService : IDeliveryTrackingService
                     db.SaveChanges();
                 }
                 await _hub.Clients.Group(Group(orderId)).SendAsync("ReceiveStatus", "En Camino", ct);
+                NotificarClientePedido(orderId, "¡Tu pedido va en camino!",
+                    "El repartidor salió del restaurante hacia tu dirección.");
 
                 // Tramo final dentro del mismo run (misma cancelación).
                 await RunLegAsync(orderId, toClient: true, run, ct);
             }
             else
             {
-                // Llegó al cliente: la entrega se completa automáticamente.
+                // Llegó al cliente: se detiene el movimiento en la puerta del cliente.
+                // NO marcamos como "Entregado" automáticamente para obligar al repartidor
+                // a realizar y registrar el cobro en la aplicación.
                 run.Phase = "delivered";
-                using (var scope = _scopeFactory.CreateScope())
-                {
-                    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-                    var order = db.Orders.FirstOrDefault(o => o.Id == orderId);
-                    if (order != null && order.Status == "En Camino")
-                    {
-                        order.Status = "Entregado";
-                        db.SaveChanges();
-                    }
-                }
                 await _hub.Clients.Group(Group(orderId)).SendAsync("ReceivePhase", "delivered", ct);
-                await _hub.Clients.Group(Group(orderId)).SendAsync("ReceiveStatus", "Entregado", ct);
+                // El estado sigue siendo "En Camino", esperando el clic de confirmación.
                 _runs.TryRemove(orderId, out _);
             }
         }

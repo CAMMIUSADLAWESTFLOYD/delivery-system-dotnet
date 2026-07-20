@@ -311,7 +311,7 @@
             //    2) CÁMARA: map.panTo es lo ÚNICO condicionado por userInteracting.
             //    3) RUTA: throttle de 5 s con la última coordenada procesada.
             // =====================================================================
-            connection.on('ReceivePosition', function (lat_in, lng_in, phase, progress) {
+            function applyTrackedPosition(lat_in, lng_in, phase, progress) {
                 if (!esCoordenadaValida(lat_in, lng_in)) {
                     console.error("Coordenada corrupta/fuera de región. Bloqueada por Geofence.");
                     return;
@@ -358,7 +358,24 @@
                     document.getElementById('progressBar').style.width =
                         Math.min(100, Math.max(5, progress * 100)) + '%';
                 }
-            });
+            }
+
+            connection.on('ReceivePosition', applyTrackedPosition);
+
+            // Respaldo para enlaces públicos: si WebSocket/SignalR se corta,
+            // consulta la posición persistida cada segundo y mantiene el marcador vivo.
+            setInterval(function () {
+                fetch(statusUrl, { cache: 'no-store' })
+                    .then(r => r.ok ? r.json() : null)
+                    .then(d => {
+                        if (!d) return;
+                        document.getElementById('orderStatus').innerText = d.status;
+                        if (esCoordenadaValida(d.currentLat, d.currentLng)) {
+                            applyTrackedPosition(d.currentLat, d.currentLng, d.phase, null);
+                        }
+                    })
+                    .catch(() => { });
+            }, 1000);
 
             // El repartidor llegó al restaurante y espera el pedido.
             connection.on('ReceivePhase', function (phase) {
@@ -367,7 +384,10 @@
                         'El repartidor llegó al restaurante: están preparando tu pedido…';
                 }
                 if (phase === 'delivered') {
-                    document.getElementById('mapHint').innerText = 'Pedido entregado.';
+                    // Llegó a la puerta; la entrega se confirma cuando el repartidor
+                    // registra el cobro y marca el pedido como entregado.
+                    document.getElementById('mapHint').innerText =
+                        '¡El repartidor llegó a tu dirección! Recibe tu pedido y realiza el pago.';
                 }
             });
 

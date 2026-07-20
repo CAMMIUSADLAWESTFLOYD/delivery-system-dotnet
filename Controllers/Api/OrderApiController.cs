@@ -1,4 +1,6 @@
 using System;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using delivery_system_dotnet.Interfaces;
 using delivery_system_dotnet.DTOs.Response;
@@ -7,6 +9,8 @@ namespace delivery_system_dotnet.Controllers.Api;
 
 [ApiController]
 [Route("api/v1/orders")]
+[Authorize] // requiere sesión iniciada: el rol se toma de los claims, nunca del request
+[Microsoft.AspNetCore.Mvc.IgnoreAntiforgeryToken] // API JSON: no usa formularios con token
 public class OrderApiController : ControllerBase
 {
     private readonly IOrderManager _orderManager;
@@ -17,13 +21,21 @@ public class OrderApiController : ControllerBase
     }
 
     [HttpPost("{orderId}/status")]
-    public IActionResult ChangeStatus(string orderId, [FromQuery] string userRole, [FromQuery] string newStatus)
+    public IActionResult ChangeStatus(string orderId, [FromQuery] string newStatus)
     {
         try
         {
-            if (string.IsNullOrEmpty(userRole) || string.IsNullOrEmpty(newStatus))
+            if (string.IsNullOrEmpty(newStatus))
             {
-                return BadRequest(new ApiResponseDto(false, "El rol de usuario y el nuevo estado son requeridos."));
+                return BadRequest(new ApiResponseDto(false, "El nuevo estado es requerido."));
+            }
+
+            // SEGURIDAD: el rol viene EXCLUSIVAMENTE de la identidad autenticada.
+            // (Antes llegaba por querystring y cualquiera podía enviar 'Admin'.)
+            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+            if (string.IsNullOrEmpty(userRole))
+            {
+                return StatusCode(403, new ApiResponseDto(false, "La sesión no tiene un rol válido."));
             }
 
             int result = _orderManager.ChangeStatus(orderId, userRole, newStatus);

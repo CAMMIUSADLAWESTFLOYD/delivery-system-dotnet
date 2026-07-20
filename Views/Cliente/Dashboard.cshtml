@@ -195,7 +195,7 @@
                         const fd = new FormData();
                         fd.append('lat', pos.coords.latitude);
                         fd.append('lng', pos.coords.longitude);
-                        fetch('/Cliente/GuardarUbicacion', { method: 'POST', body: fd })
+                        fetch('/Cliente/GuardarUbicacion', { method: 'POST', body: fd, headers: { 'X-CSRF-TOKEN': window.__csrf || '' } })
                             .then(r => r.ok ? r.json() : null)
                             .then(d => {
                                 msg.innerHTML = d && d.ok

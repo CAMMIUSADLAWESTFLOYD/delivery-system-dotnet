@@ -44,7 +44,7 @@ public class UsuarioService : IUsuarioService
 
         delivery.SetPassword(BCrypt.Net.BCrypt.HashPassword(password));
         delivery.Status = true;
-        delivery.Rating = 5.0;
+        delivery.Rating = 0.0; // sin calificación hasta que un cliente lo puntúe
 
         _context.Deliveries.Add(delivery);
         // Aprobación del administrador: el repartidor (y su vehículo) queda
@@ -228,6 +228,35 @@ public class UsuarioService : IUsuarioService
 
         usuario.SetPassword(BCrypt.Net.BCrypt.HashPassword(passwordNueva));
         await _context.SaveChangesAsync();
+    }
+
+    // RESETEO por el ADMINISTRADOR: no pide la contraseña anterior (el admin
+    // actúa cuando el usuario la perdió). Genera una contraseña TEMPORAL, la
+    // guarda hasheada y la devuelve en texto plano UNA sola vez para que el
+    // administrador se la entregue al usuario, que luego la cambia en su perfil.
+    // Nunca se guarda ni se vuelve a mostrar en texto plano.
+    public async Task<string> ResetearPasswordAsync(string dni)
+    {
+        var usuario = await _context.Persons.FindAsync(dni);
+        if (usuario == null)
+        {
+            throw new KeyNotFoundException("Usuario no encontrado.");
+        }
+
+        var temporal = GenerarPasswordTemporal();
+        usuario.SetPassword(BCrypt.Net.BCrypt.HashPassword(temporal));
+        await _context.SaveChangesAsync();
+        return temporal;
+    }
+
+    // Contraseña temporal legible pero aleatoria (ej. "FB-7K2M9QX4"). Se excluyen
+    // caracteres ambiguos (O/0, I/1) para que sea fácil de dictar por teléfono.
+    private static string GenerarPasswordTemporal()
+    {
+        const string abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(8);
+        var chars = bytes.Select(b => abc[b % abc.Length]).ToArray();
+        return "FB-" + new string(chars);
     }
 
     // Guarda la foto de perfil en wwwroot/images/profiles y persiste la ruta.

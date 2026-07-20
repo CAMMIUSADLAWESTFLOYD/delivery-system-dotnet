@@ -23,12 +23,17 @@ public class ClienteController : Controller
     private readonly ApplicationDbContext _context;
     private readonly IUsuarioService _usuarioService;
     private readonly IWebHostEnvironment _env;
+    private readonly IRiderAssignmentService _riderAssignment;
+    private readonly INotificationService _notificaciones;
 
-    public ClienteController(ApplicationDbContext context, IUsuarioService usuarioService, IWebHostEnvironment env)
+    public ClienteController(ApplicationDbContext context, IUsuarioService usuarioService,
+        IWebHostEnvironment env, IRiderAssignmentService riderAssignment, INotificationService notificaciones)
     {
         _context = context;
         _usuarioService = usuarioService;
         _env = env;
+        _riderAssignment = riderAssignment;
+        _notificaciones = notificaciones;
     }
 
     public IActionResult Dashboard()
@@ -93,8 +98,8 @@ public class ClienteController : Controller
         // su punto de entrega en el mapa (tarifa $1.50/km, ver Checkout).
         model.DeliveryFee = 0.0;
 
-        // Cargar repartidores disponibles
-        ViewBag.Repartidores = _context.Deliveries.Where(d => d.Status).ToList();
+        // El repartidor lo asigna el sistema automáticamente (ver Checkout);
+        // el cliente ya no lo elige.
 
         // Origen para la previsualización de ruta del PinSelector
         var firstId = cart.Keys.FirstOrDefault();
@@ -212,12 +217,10 @@ public class ClienteController : Controller
         var orders = _context.Orders
             .Include(o => o.Restaurant)
             .Include(o => o.Delivery)
+            .Include(o => o.Payment)
             .Where(o => o.ClientDni == clientDni)
             .OrderByDescending(o => o.DateOrder)
             .ToList();
-
-        // Cargar repartidores disponibles para reasignación de pedidos pendientes
-        ViewBag.Repartidores = _context.Deliveries.Where(d => d.Status).ToList();
 
         return View("HistorialPedidos", orders);
     }
@@ -225,12 +228,14 @@ public class ClienteController : Controller
     [HttpGet]
     public IActionResult SeguimientoPedido(string orderId)
     {
+        // Solo el dueño puede seguir su pedido (no exponer la entrega de otro cliente).
+        var clientDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var order = _context.Orders
             .Include(o => o.Restaurant)
             .Include(o => o.Delivery)
             .Include(o => o.Client)
-            .FirstOrDefault(o => o.Id == orderId);
-        
+            .FirstOrDefault(o => o.Id == orderId && o.ClientDni == clientDni);
+
         if (order == null) return NotFound();
 
         // Parche de emergencia para Leaflet Routing (Asignar destino por defecto)
@@ -242,6 +247,32 @@ public class ClienteController : Controller
         }
 
         return View("SeguimientoPedido", order);
+    }
+
+    // Factura del pedido para el cliente (imprimible / guardar como PDF).
+    [HttpGet]
+    public IActionResult Factura(string orderId)
+    {
+        var clientDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var order = _context.Orders
+            .Include(o => o.Restaurant)
+            .Include(o => o.Client)
+            .Include(o => o.Delivery)
+            .Include(o => o.Payment)
+            .Include(o => o.OrderDetails)
+                .ThenInclude(d => d.Products)
+            .FirstOrDefault(o => o.Id == orderId && o.ClientDni == clientDni);
+
+        if (order == null) return NotFound();
+
+        // Solo se factura un pedido entregado o efectivamente pagado.
+        if (order.Status != "Entregado" && !order.PaymentStatus)
+        {
+            TempData["Error"] = "La factura estará disponible cuando el pedido sea entregado o el pago se confirme.";
+            return RedirectToAction("HistorialPedidos");
+        }
+
+        return View("Factura", order);
     }
 
     [HttpPost]
@@ -292,19 +323,16 @@ public class ClienteController : Controller
             }
         }
 
-        // Promedio REAL del restaurante: cada calificación buena o mala mueve
-        // la reputación del negocio (Rating) y su número de reseñas (RatingCount).
+        // Promedio acumulado del restaurante: conserva las reseñas históricas
+        // existentes y hace que cada nota nueva suba o baje su reputación.
         if (order.Restaurant != null)
         {
-            var notasRest = _context.Orders
-                .Where(o => o.RestaurantId == order.RestaurantId && o.RestaurantRating != null)
-                .Select(o => o.RestaurantRating!.Value)
-                .ToList();
-            if (notasRest.Count > 0)
-            {
-                order.Restaurant.Rating = Math.Round(notasRest.Average(), 2);
-                order.Restaurant.RatingCount = notasRest.Count;
-            }
+            var cantidadAnterior = order.Restaurant.RatingCount;
+            var sumaAnterior = order.Restaurant.Rating * cantidadAnterior;
+            order.Restaurant.RatingCount = cantidadAnterior + 1;
+            order.Restaurant.Rating = Math.Round(
+                (sumaAnterior + restaurantRating) / order.Restaurant.RatingCount,
+                2);
         }
 
         _context.SaveChanges();
@@ -316,7 +344,10 @@ public class ClienteController : Controller
     [HttpPost]
     public IActionResult CancelarPedido(string orderId)
     {
-        var order = _context.Orders.FirstOrDefault(o => o.Id == orderId);
+        // Solo el dueño del pedido puede cancelarlo (evita que un cliente cancele
+        // el pedido de otro conociendo/adivinando su Id).
+        var clientDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var order = _context.Orders.FirstOrDefault(o => o.Id == orderId && o.ClientDni == clientDni);
         if (order == null) return NotFound();
 
         if (order.Status != "Pendiente")
@@ -418,11 +449,28 @@ public class ClienteController : Controller
     [HttpPost]
     public IActionResult AddToCart(int productId, int quantity)
     {
-        var product = _context.Products.FirstOrDefault(p => p.Id == productId);
+        var product = _context.Products.Include(p => p.Restaurant).FirstOrDefault(p => p.Id == productId);
         if (product == null || !product.Available)
         {
             TempData["Error"] = "Producto no disponible.";
             return RedirectBack("BuscarProductos");
+        }
+
+        // Mundo real: un pedido pertenece a UN restaurante. Si el carrito ya
+        // tiene productos de otro local, se pide finalizar o vaciar primero.
+        var cartActual = GetCart();
+        if (cartActual.Any())
+        {
+            var otroRestaurante = _context.Products
+                .Include(p => p.Restaurant)
+                .Where(p => cartActual.Keys.Contains(p.Id) && p.RestaurantId != product.RestaurantId)
+                .Select(p => p.Restaurant!.Name)
+                .FirstOrDefault();
+            if (otroRestaurante != null)
+            {
+                TempData["Error"] = $"Tu carrito tiene productos de \"{otroRestaurante}\". Finaliza ese pedido o vacía el carrito para pedir en \"{product.Restaurant?.Name}\".";
+                return RedirectBack("BuscarProductos");
+            }
         }
 
         if (quantity < 1) quantity = 1;
@@ -487,9 +535,60 @@ public class ClienteController : Controller
             : Json(new { ok = true, code = codigo.Code, percent = codigo.Percent });
     }
 
+    // ------- Validación de tarjeta (simulada pero con reglas del mundo real) -------
+    // Luhn + longitud + expiración futura + CVV. El número completo y el CVV
+    // JAMÁS se persisten: solo marca y últimos 4 dígitos.
+    private static string? ValidarTarjeta(string? numero, string? titular, string? expiracion, string? cvv, out string referencia)
+    {
+        referencia = "";
+        var digitos = new string((numero ?? "").Where(char.IsDigit).ToArray());
+        if (digitos.Length < 13 || digitos.Length > 19)
+            return "El número de tarjeta debe tener entre 13 y 19 dígitos.";
+
+        // Algoritmo de Luhn
+        int suma = 0; bool alterno = false;
+        for (int i = digitos.Length - 1; i >= 0; i--)
+        {
+            int d = digitos[i] - '0';
+            if (alterno) { d *= 2; if (d > 9) d -= 9; }
+            suma += d; alterno = !alterno;
+        }
+        if (suma % 10 != 0)
+            return "El número de tarjeta no es válido (verifica los dígitos).";
+
+        if (string.IsNullOrWhiteSpace(titular) || titular.Trim().Length < 5)
+            return "Ingresa el nombre del titular tal como aparece en la tarjeta.";
+
+        // Expiración MM/AA o MM/AAAA, en el futuro
+        var exp = (expiracion ?? "").Trim();
+        var partes = exp.Split('/');
+        if (partes.Length != 2 || !int.TryParse(partes[0], out int mes) || !int.TryParse(partes[1], out int anio)
+            || mes < 1 || mes > 12)
+            return "La fecha de expiración debe tener formato MM/AA.";
+        if (anio < 100) anio += 2000;
+        var finDeMes = new DateTime(anio, mes, DateTime.DaysInMonth(anio, mes));
+        if (finDeMes < DateTime.Today)
+            return "La tarjeta está vencida.";
+
+        var cvvDigits = new string((cvv ?? "").Where(char.IsDigit).ToArray());
+        if (cvvDigits.Length < 3 || cvvDigits.Length > 4)
+            return "El CVV debe tener 3 o 4 dígitos.";
+
+        string marca = digitos[0] switch
+        {
+            '4' => "VISA",
+            '5' => "MASTERCARD",
+            '3' => "AMEX",
+            _ => "TARJETA"
+        };
+        referencia = $"{marca} ****{digitos[^4..]}";
+        return null; // válida
+    }
+
     [HttpPost]
     public IActionResult Checkout(string destinyAddres, string deliveryDni, double? ClienteLatitud,
-        double? ClienteLongitud, string paymentMethod, string? discountCode, double? routeKm)
+        double? ClienteLongitud, string paymentMethod, string? discountCode, double? routeKm,
+        string? cardNumber, string? cardHolder, string? cardExpiry, string? cardCvv, string? transferReference)
     {
         // Validación Anti-Océano (Failsafe)
         if (ClienteLatitud == 0 || ClienteLongitud == 0 || ClienteLatitud == null || ClienteLongitud == null)
@@ -509,11 +608,8 @@ public class ClienteController : Controller
             return RedirectToAction("Carrito");
         }
 
-        if (string.IsNullOrEmpty(deliveryDni))
-        {
-            TempData["Error"] = "Debes seleccionar un repartidor disponible.";
-            return RedirectToAction("Carrito");
-        }
+        // El repartidor YA NO lo elige el cliente: lo asigna el sistema
+        // automáticamente (repartidor disponible más cercano al restaurante).
 
         // Método de pago obligatorio: Tarjeta, Transferencia o Efectivo.
         var metodosValidos = new[] { "Tarjeta", "Transferencia", "Efectivo" };
@@ -523,6 +619,33 @@ public class ClienteController : Controller
             return RedirectToAction("Carrito");
         }
 
+        // ------- Datos del pago según el método (interfaz del mundo real) -------
+        string? referenciaPago = null;
+        bool pagoVerificado = false;
+
+        if (paymentMethod == "Tarjeta")
+        {
+            var errorTarjeta = ValidarTarjeta(cardNumber, cardHolder, cardExpiry, cardCvv, out var refTarjeta);
+            if (errorTarjeta != null)
+            {
+                TempData["Error"] = errorTarjeta;
+                return RedirectToAction("Carrito");
+            }
+            referenciaPago = refTarjeta;   // ej. "VISA ****1111" (nunca el número completo)
+            pagoVerificado = true;         // cobro simulado aprobado al instante
+        }
+        else if (paymentMethod == "Transferencia")
+        {
+            var comprobante = (transferReference ?? "").Trim();
+            if (comprobante.Length < 6 || comprobante.Length > 40)
+            {
+                TempData["Error"] = "Ingresa el número de comprobante de tu transferencia (mínimo 6 caracteres).";
+                return RedirectToAction("Carrito");
+            }
+            referenciaPago = comprobante;
+            pagoVerificado = false;        // la verifica el administrador
+        }
+
         // El restaurante del pedido se toma del primer producto del carrito
         // (relación por RestaurantId), para que el mapa use el origen real.
         var firstProductId = cart.Keys.First();
@@ -530,6 +653,25 @@ public class ClienteController : Controller
             .Include(p => p.Restaurant)
             .FirstOrDefault(p => p.Id == firstProductId);
         var restaurant = firstProduct?.Restaurant ?? _context.Restaurants.FirstOrDefault();
+
+        // Mundo real: no se puede pedir a un local inactivo o fuera de horario.
+        if (restaurant != null)
+        {
+            if (!restaurant.IsActive)
+            {
+                TempData["Error"] = $"\"{restaurant.Name}\" no está disponible en este momento.";
+                return RedirectToAction("Carrito");
+            }
+            var ahora = DateTime.Now.TimeOfDay;
+            bool abierto = restaurant.OpeningHour <= restaurant.ClosingHour
+                ? ahora >= restaurant.OpeningHour && ahora <= restaurant.ClosingHour
+                : ahora >= restaurant.OpeningHour || ahora <= restaurant.ClosingHour; // horario nocturno
+            if (!abierto)
+            {
+                TempData["Error"] = $"\"{restaurant.Name}\" está cerrado ahora (atiende de {restaurant.OpeningHour:hh\\:mm} a {restaurant.ClosingHour:hh\\:mm}).";
+                return RedirectToAction("Carrito");
+            }
+        }
 
         // ------- Cálculo REAL de la distancia de entrega (por kilómetro) -------
         // Línea recta (Haversine) restaurante -> punto de entrega, con factor
@@ -566,15 +708,17 @@ public class ClienteController : Controller
         var order = new Order
         {
             Id = orderId,
-            Status = "PendienteRepartidor", // Nuevo estado esperando aceptación
+            // "Pendiente" hasta que el sistema encuentre repartidor disponible;
+            // la asignación automática lo pasa a "PendienteRepartidor".
+            Status = "Pendiente",
             DestinyAddres = destinyAddres,
             RestaurantId = restaurant?.Id,
             ClientDni = clientDni,
-            DeliveryDni = deliveryDni,
+            DeliveryDni = null,
             Distance = distanciaKm,
-            // Tarjeta/Transferencia se consideran pagadas al confirmar;
-            // Efectivo se cobra contra entrega.
-            PaymentStatus = paymentMethod != "Efectivo"
+            // Solo la tarjeta queda pagada al confirmar; la transferencia espera
+            // la verificación del administrador y el efectivo se cobra al entregar.
+            PaymentStatus = paymentMethod == "Tarjeta"
         };
         AplicarUbicacionEntrega(order, clientDni, ClienteLatitud, ClienteLongitud);
         order.ClienteLatitud = ClienteLatitud ?? 0.3517;
@@ -591,7 +735,7 @@ public class ClienteController : Controller
         }
 
         // Desglose final: AddNewProduct ya calculó Total = subtotal + envío
-        // (Distance × tarifa/km, ver Order.ICalculateDeliveryFee) + IVA.
+        // (tarifa urbana con tope, ver Order.ICalculateDeliveryFee) + IVA.
         // El descuento porcentual se aplica sobre el subtotal de productos.
         double subtotalProductos = order.OrderDetails.Sum(d => d.SubTotal);
         order.DeliveryFee = Math.Round(order.ICalculateDeliveryFee(distanciaKm), 2);
@@ -602,34 +746,71 @@ public class ClienteController : Controller
             order.Total = Math.Max(0, Math.Round(order.Total - order.DiscountAmount.Value, 2));
         }
 
+        // El total se guarda SIEMPRE redondeado a 2 decimales (centavos): sin
+        // esto quedaba con precisión flotante (p. ej. 22.5009) y, aunque las
+        // vistas lo formatean, el dato persistido debe ser un monto de dinero real.
+        order.Total = Math.Round(order.Total, 2);
+
         // Registro del método de pago del pedido.
-        _context.Payments.Add(new Payment { OrderId = orderId, PaymentMethod = paymentMethod });
+        _context.Payments.Add(new Payment
+        {
+            OrderId = orderId,
+            PaymentMethod = paymentMethod,
+            Reference = referenciaPago,
+            Verified = pagoVerificado,
+            VerifiedAt = pagoVerificado ? DateTime.UtcNow : null
+        });
         _context.SaveChanges();
 
         SaveCart(new Dictionary<int, int>());
-        var pagoTxt = paymentMethod == "Efectivo" ? "pagarás en efectivo al recibir" : $"pago registrado con {paymentMethod.ToLower()}";
-        TempData["Message"] = $"Pedido {orderId} confirmado ({pagoTxt}). Esperando que el repartidor lo acepte.";
+
+        // ---- Asignación automática del repartidor más cercano ----
+        order.Restaurant = restaurant;
+        var asignado = _riderAssignment.AsignarMasCercano(order);
+
+        // Aviso a los administradores si hay una transferencia por verificar.
+        if (paymentMethod == "Transferencia")
+        {
+            _ = _notificaciones.NotificarRolAsync("Admin",
+                "Transferencia por verificar",
+                $"Pedido {orderId}: comprobante {referenciaPago} por ${order.Total:F2}.",
+                "/Admin/VerificarPagos");
+        }
+
+        var pagoTxt = paymentMethod switch
+        {
+            "Tarjeta" => $"pago aprobado con {referenciaPago}",
+            "Transferencia" => $"transferencia {referenciaPago} en verificación: el administrador la confirmará en breve",
+            _ => "pagarás en efectivo al recibir"
+        };
+        var riderTxt = asignado != null
+            ? $"Repartidor asignado: {asignado.Name}."
+            : "Buscando repartidor disponible; se asignará automáticamente.";
+        TempData["Message"] = $"Pedido {orderId} confirmado ({pagoTxt}). {riderTxt}";
         return RedirectToAction("HistorialPedidos");
     }
 
+    // Reintenta la asignación automática de un pedido que quedó "Pendiente"
+    // porque no había repartidores libres al confirmarlo.
     [HttpPost]
-    public IActionResult ElegirRepartidor(string orderId, string deliveryDni)
+    public IActionResult BuscarRepartidor(string orderId)
     {
         var clientDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var order = _context.Orders.FirstOrDefault(o => o.Id == orderId && o.ClientDni == clientDni);
+        var order = _context.Orders
+            .Include(o => o.Restaurant)
+            .FirstOrDefault(o => o.Id == orderId && o.ClientDni == clientDni);
         if (order == null) return NotFound();
 
         if (order.Status != "Pendiente")
         {
-            TempData["Error"] = "El pedido no está en estado pendiente de asignación.";
+            TempData["Error"] = "Este pedido ya no está esperando repartidor.";
             return RedirectToAction("HistorialPedidos");
         }
 
-        order.DeliveryDni = deliveryDni;
-        order.Status = "PendienteRepartidor";
-        _context.SaveChanges();
-
-        TempData["Message"] = $"Repartidor asignado al pedido {orderId}. Esperando que lo acepte.";
+        var asignado = _riderAssignment.AsignarMasCercano(order);
+        TempData[asignado != null ? "Message" : "Error"] = asignado != null
+            ? $"Repartidor asignado al pedido {orderId}: {asignado.Name}."
+            : "Aún no hay repartidores disponibles. Intenta de nuevo en un momento.";
         return RedirectToAction("HistorialPedidos");
     }
 
@@ -643,11 +824,13 @@ public class ClienteController : Controller
     [HttpGet]
     public IActionResult TrackOrderStatus(string orderId)
     {
+        // Solo el dueño puede consultar el estado/coordenadas de su pedido.
+        var clientDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var order = _context.Orders
             .Include(o => o.Delivery)
             .Include(o => o.Restaurant)
             .Include(o => o.Client)
-            .FirstOrDefault(o => o.Id == orderId);
+            .FirstOrDefault(o => o.Id == orderId && o.ClientDni == clientDni);
         if (order == null) return NotFound();
 
         // Fase del recorrido derivada del estado REAL del pedido. Define qué tramo

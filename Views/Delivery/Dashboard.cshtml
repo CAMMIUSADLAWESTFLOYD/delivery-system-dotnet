@@ -175,5 +175,26 @@
                 map.fitBounds(puntos, { padding: [36, 36] });
             }
         });
+
+        // ============================================================
+        // Aviso en vivo de pedido NUEVO: el panel se refresca solo cuando el
+        // sistema asigna (o libera) un pedido de este repartidor, sin depender
+        // de que el toast efímero se viera. Cada 5 s compara el conjunto de IDs
+        // asignados con el que se pintó al cargar.
+        // ============================================================
+        (function () {
+            const idsIniciales = [@Html.Raw(string.Join(",", activas.Select(o => "'" + o.Id + "'")))];
+            const setInicial = new Set(idsIniciales);
+            setInterval(async function () {
+                if (document.querySelector('.modal.show')) return;
+                try {
+                    const r = await fetch('/Delivery/PedidosActivosIds', { cache: 'no-store' });
+                    if (!r.ok) return;
+                    const ids = await r.json();
+                    const cambio = ids.length !== setInicial.size || ids.some(id => !setInicial.has(id));
+                    if (cambio) { location.reload(); }
+                } catch (e) { /* transitorio */ }
+            }, 5000);
+        })();
     </script>
 }

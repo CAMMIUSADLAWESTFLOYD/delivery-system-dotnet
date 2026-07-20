@@ -1,5 +1,10 @@
 @using System.Security.Claims
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
 @{
+    // Token CSRF de la sesión: el script del final lo inyecta en cada formulario
+    // POST y queda disponible por cabecera para los envíos AJAX.
+    var csrfToken = Antiforgery.GetAndStoreTokens(Context).RequestToken;
+
     var layoutRole = User.Identity != null && User.Identity.IsAuthenticated
         ? User.FindFirst(ClaimTypes.Role)?.Value
         : null;
@@ -16,6 +21,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="@csrfToken" />
     <title>@ViewData["Title"] - FlashBite Delivery</title>
     <!-- Tipografía del sistema: IBM Plex Sans (700 títulos / 600 subtítulos / 400 cuerpo) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -51,5 +57,86 @@
     <script>
         if (window.lucide) { lucide.createIcons(); }
     </script>
+
+    <script>
+        // ============================================================
+        // CSRF: inyecta el token antiforgery en cada formulario POST antes de
+        // enviarlo, para que el servidor (validación global) lo acepte. Así se
+        // protegen TODOS los formularios sin tener que editarlos uno por uno.
+        // ============================================================
+        (function () {
+            var meta = document.querySelector('meta[name="csrf-token"]');
+            var token = meta ? meta.getAttribute('content') : '';
+            window.__csrf = token; // disponible para envíos fetch/AJAX
+            function ponerToken(form) {
+                if (!token) return;
+                if ((form.method || '').toLowerCase() !== 'post') return;
+                var campo = form.querySelector('input[name="__RequestVerificationToken"]');
+                if (!campo) {
+                    campo = document.createElement('input');
+                    campo.type = 'hidden';
+                    campo.name = '__RequestVerificationToken';
+                    form.appendChild(campo);
+                }
+                campo.value = token;
+            }
+            // Al enviar cualquier formulario (captura envíos dinámicos también).
+            document.addEventListener('submit', function (e) {
+                if (e.target && e.target.tagName === 'FORM') ponerToken(e.target);
+            }, true);
+            // Y de una vez para los formularios ya presentes.
+            document.addEventListener('DOMContentLoaded', function () {
+                document.querySelectorAll('form').forEach(ponerToken);
+            });
+        })();
+    </script>
+
+    @if (User.Identity != null && User.Identity.IsAuthenticated)
+    {
+        <!-- Notificaciones en tiempo real (toasts) para el usuario autenticado -->
+        <div id="fbToasts" style="position: fixed; right: 16px; bottom: 16px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; max-width: 340px;"></div>
+        <script>
+            // Handler de notificaciones a nivel window (registrarlo desde el
+            // ámbito del módulo SignalR dentro de un IIFE resultó no dispararse;
+            // definido aquí funciona de forma fiable).
+            window.fbShowToast = function (titulo, mensaje, url) {
+                var cont = document.getElementById('fbToasts');
+                if (!cont) return;
+                var box = document.createElement('div');
+                box.style.cssText = 'background:#0e1f33;color:#fff;border-left:4px solid #2e7cd6;padding:12px 16px;box-shadow:0 2px 8px rgba(0,0,0,.25);font-size:13px;' + (url ? 'cursor:pointer;' : '');
+                var t = document.createElement('div');
+                t.style.cssText = 'font-weight:700;margin-bottom:2px;';
+                t.textContent = titulo || '';
+                var m = document.createElement('div');
+                m.style.cssText = 'opacity:.85;';
+                m.textContent = mensaje || '';
+                box.appendChild(t); box.appendChild(m);
+                if (url) box.addEventListener('click', function () { window.location.href = url; });
+                cont.appendChild(box);
+                setTimeout(function () { box.style.transition = 'opacity .4s'; box.style.opacity = '0'; }, 8000);
+                setTimeout(function () { box.remove(); }, 8600);
+            };
+        </script>
+        <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+        <script>
+            // Espera a que el CDN de SignalR esté disponible antes de conectar
+            // (la carga del script externo puede completarse tarde; sin esta
+            // espera la conexión de notificaciones no se creaba).
+            (function waitSignalR(intentos) {
+                if (!window.signalR) {
+                    if (intentos > 0) return void setTimeout(function () { waitSignalR(intentos - 1); }, 300);
+                    return;
+                }
+                window.fbNotifConn = new signalR.HubConnectionBuilder()
+                    .withUrl('/hubs/tracking')
+                    .withAutomaticReconnect()
+                    .build();
+                window.fbNotifConn.on('Notify', function (t, m, u) { window.fbShowToast(t, m, u); });
+                var fbJoin = function () { window.fbNotifConn.invoke('JoinNotifications').catch(function () { }); };
+                window.fbNotifConn.start().then(fbJoin).catch(function () { });
+                window.fbNotifConn.onreconnected(fbJoin);
+            })(20);
+        </script>
+    }
 </body>
 </html>

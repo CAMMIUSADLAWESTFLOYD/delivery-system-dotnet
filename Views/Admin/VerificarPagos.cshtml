@@ -1,0 +1,187 @@
+@model List<delivery_system_dotnet.Models.Payment>
+@{
+    ViewData["Title"] = "Verificar Transferencias - FlashBite";
+    var verificadas = ViewBag.Verificadas as List<delivery_system_dotnet.Models.Payment>
+                      ?? new List<delivery_system_dotnet.Models.Payment>();
+    var reembolsos = ViewBag.ReembolsosPendientes as List<delivery_system_dotnet.Models.Payment>
+                      ?? new List<delivery_system_dotnet.Models.Payment>();
+}
+
+<div class="container mt-4 animate-fade-in">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h4 class="section-heading m-0">Verificación de transferencias</h4>
+        @if (Model.Any())
+        {
+            <span class="badge-delivery badge-delivery-warning">@Model.Count pendiente(s)</span>
+        }
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success mb-3">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger mb-3">@TempData["Error"]</div>
+    }
+
+    <p class="text-muted small">
+        El cliente reporta el número de comprobante al pagar. Compara ese número con el
+    movimiento en la cuenta bancaria del negocio y aprueba o rechaza el pago.
+        Un pedido con transferencia sin verificar <strong>no puede entrar a reparto</strong>.
+    </p>
+
+    <div class="dashboard-card mb-4">
+        <div class="dashboard-card-header">Pendientes de verificación</div>
+        <div class="table-responsive">
+            <table class="table table-delivery align-middle m-0">
+                <thead>
+                    <tr>
+                        <th>Pedido</th>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Restaurante</th>
+                        <th class="text-end">Monto a confirmar</th>
+                        <th>Comprobante</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Any())
+                    {
+                        foreach (var pago in Model)
+                        {
+                            <tr>
+                                <td><strong>@pago.OrderId</strong></td>
+                                <td style="white-space: nowrap;">@pago.Order?.DateOrder.ToString("dd/MM HH:mm")</td>
+                                <td>@(pago.Order?.Client?.Name ?? "—")</td>
+                                <td>@(pago.Order?.Restaurant?.Name ?? "—")</td>
+                                <td class="text-end fw-bold" style="font-variant-numeric: tabular-nums;">$@(pago.Order?.Total.ToString("F2"))</td>
+                                <td><code style="font-size: 13px;">@pago.Reference</code></td>
+                                <td class="text-end" style="white-space: nowrap;">
+                                    <form method="post" action="/Admin/ResolverPago" class="d-inline"
+                                          onsubmit="return confirm('¿Confirmas que la transferencia @pago.Reference por $@(pago.Order?.Total.ToString("F2")) SÍ llegó a la cuenta del negocio?');">
+                                        <input type="hidden" name="orderId" value="@pago.OrderId" />
+                                        <input type="hidden" name="aprobar" value="true" />
+                                        <button type="submit" class="btn btn-sm btn-delivery-primary">
+                                            <i data-lucide="check"></i> Aprobar pago
+                                        </button>
+                                    </form>
+                                    <form method="post" action="/Admin/ResolverPago" class="d-inline"
+                                          onsubmit="return confirm('¿Rechazar la transferencia y CANCELAR el pedido @pago.OrderId?');">
+                                        <input type="hidden" name="orderId" value="@pago.OrderId" />
+                                        <input type="hidden" name="aprobar" value="false" />
+                                        <button type="submit" class="btn btn-sm btn-destructive">
+                                            <i data-lucide="x"></i> Rechazar
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty-state" style="border: none;">
+                                    <i data-lucide="landmark" class="empty-state-icon" style="width:32px;height:32px;"></i>
+                                    <h5>No hay transferencias por verificar</h5>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Reembolsos pendientes: pedidos pagados que fueron cancelados -->
+    <div class="dashboard-card mb-4">
+        <div class="dashboard-card-header d-flex justify-content-between align-items-center">
+            <span>Reembolsos pendientes</span>
+            @if (reembolsos.Any())
+            {
+                <span class="badge-delivery badge-delivery-danger">@reembolsos.Count por reembolsar</span>
+            }
+        </div>
+        <div class="table-responsive">
+            <table class="table table-delivery align-middle m-0">
+                <thead>
+                    <tr>
+                        <th>Pedido</th>
+                        <th>Cliente</th>
+                        <th>Método</th>
+                        <th>Referencia</th>
+                        <th class="text-end">Monto a reembolsar</th>
+                        <th class="text-end">Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (reembolsos.Any())
+                    {
+                        foreach (var pago in reembolsos)
+                        {
+                            <tr>
+                                <td><strong>@pago.OrderId</strong></td>
+                                <td>@(pago.Order?.Client?.Name ?? "—")</td>
+                                <td>@pago.PaymentMethod</td>
+                                <td><code style="font-size: 13px;">@pago.Reference</code></td>
+                                <td class="text-end fw-bold" style="font-variant-numeric: tabular-nums; color: var(--fb-danger);">$@(pago.Order?.Total.ToString("F2"))</td>
+                                <td class="text-end">
+                                    <form method="post" action="/Admin/MarcarReembolso" class="d-inline"
+                                          onsubmit="return confirm('¿Confirmas que devolviste $@(pago.Order?.Total.ToString("F2")) al cliente del pedido @pago.OrderId?');">
+                                        <input type="hidden" name="orderId" value="@pago.OrderId" />
+                                        <button type="submit" class="btn btn-sm btn-delivery-primary">
+                                            <i data-lucide="rotate-ccw"></i> Marcar reembolsado
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="6">
+                                <div class="empty-state" style="border: none;">
+                                    <i data-lucide="rotate-ccw" class="empty-state-icon" style="width:32px;height:32px;"></i>
+                                    <h5>No hay reembolsos pendientes</h5>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (verificadas.Any())
+    {
+        <div class="dashboard-card">
+            <div class="dashboard-card-header">Últimas transferencias verificadas</div>
+            <div class="table-responsive">
+                <table class="table table-delivery align-middle m-0">
+                    <thead>
+                        <tr>
+                            <th>Pedido</th>
+                            <th>Comprobante</th>
+                            <th class="text-end">Monto</th>
+                            <th>Verificada</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pago in verificadas)
+                        {
+                            <tr>
+                                <td>@pago.OrderId</td>
+                                <td><code style="font-size: 13px;">@pago.Reference</code></td>
+                                <td class="text-end" style="font-variant-numeric: tabular-nums;">$@(pago.Order?.Total.ToString("F2"))</td>
+                                <td><span class="badge-delivery badge-delivery-success">@pago.VerifiedAt?.ToString("dd/MM HH:mm")</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>

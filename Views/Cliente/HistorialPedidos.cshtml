@@ -12,7 +12,9 @@
 
     string EstadoTexto(string estado) => estado switch
     {
-        "PendienteRepartidor" => "Esperando repartidor",
+        "Pendiente" => "Buscando repartidor",
+        "PendienteRepartidor" => "Esperando que acepte",
+        "CancelacionSolicitada" => "Cancelación solicitada",
         _ => estado
     };
 }
@@ -68,31 +70,24 @@
 
                                     @if (order.Status == "Pendiente")
                                     {
-                                        <form method="post" action="/Cliente/CancelarPedido" class="d-inline">
+                                        <form method="post" action="/Cliente/BuscarRepartidor" class="d-inline">
                                             <input type="hidden" name="orderId" value="@order.Id" />
-                                            <button type="submit" class="btn btn-sm btn-destructive"
-                                                    onsubmit="return confirm('¿Cancelar este pedido?')">Cancelar</button>
+                                            <button type="submit" class="btn btn-sm btn-delivery-outline" title="Reintentar la asignación automática">
+                                                <i data-lucide="refresh-cw"></i> Buscar repartidor
+                                            </button>
                                         </form>
-                                        <form method="post" action="/Cliente/ElegirRepartidor" class="d-inline">
+                                        <form method="post" action="/Cliente/CancelarPedido" class="d-inline"
+                                              onsubmit="return confirm('¿Cancelar este pedido?')">
                                             <input type="hidden" name="orderId" value="@order.Id" />
-                                            <div class="input-group input-group-sm" style="width: auto; display: inline-flex;">
-                                                <select name="deliveryDni" class="form-select form-select-sm" required style="max-width: 150px;">
-                                                    <option value="">Elegir repartidor…</option>
-                                                    @if (ViewBag.Repartidores != null)
-                                                    {
-                                                        foreach (var rep in (IEnumerable<delivery_system_dotnet.Models.Delivery>)ViewBag.Repartidores)
-                                                        {
-                                                            <option value="@rep.Dni">@rep.Name</option>
-                                                        }
-                                                    }
-                                                </select>
-                                                <button type="submit" class="btn btn-delivery-outline btn-sm">Asignar</button>
-                                            </div>
+                                            <button type="submit" class="btn btn-sm btn-destructive">Cancelar</button>
                                         </form>
                                     }
 
                                     @if (order.Status == "Entregado")
                                     {
+                                        <a href="/Cliente/Factura?orderId=@order.Id" class="btn btn-sm btn-delivery-outline">
+                                            <i data-lucide="file-text"></i> Factura
+                                        </a>
                                         if (order.Rating != null)
                                         {
                                             <span class="d-inline-flex align-items-center gap-1" title="Calificaste este pedido con @order.Rating de 5"
@@ -154,7 +149,9 @@
                             <div class="star-picker d-inline-flex gap-1" data-target="rating" style="cursor: pointer;">
                                 @for (int s = 1; s <= 5; s++)
                                 {
-                                    <i data-lucide="star" class="star-opt" data-value="@s" style="width:30px;height:30px;color:var(--fb-warning);fill:var(--fb-warning);"></i>
+                                    <button type="button" class="star-opt border-0 bg-transparent p-0" data-value="@s" aria-label="@s estrella(s)" style="line-height:0;color:var(--fb-warning);">
+                                        <i data-lucide="star" style="width:30px;height:30px;fill:var(--fb-warning);"></i>
+                                    </button>
                                 }
                             </div>
                             <p class="mt-1 mb-3 small text-muted rating-label" data-for="rating">5 - Excelente servicio</p>
@@ -167,7 +164,9 @@
                             <div class="star-picker d-inline-flex gap-1" data-target="restaurantRating" style="cursor: pointer;">
                                 @for (int s = 1; s <= 5; s++)
                                 {
-                                    <i data-lucide="star" class="star-opt" data-value="@s" style="width:30px;height:30px;color:var(--fb-warning);fill:var(--fb-warning);"></i>
+                                    <button type="button" class="star-opt border-0 bg-transparent p-0" data-value="@s" aria-label="@s estrella(s)" style="line-height:0;color:var(--fb-warning);">
+                                        <i data-lucide="star" style="width:30px;height:30px;fill:var(--fb-warning);"></i>
+                                    </button>
                                 }
                             </div>
                             <p class="mt-1 mb-0 small text-muted rating-label" data-for="restaurantRating">5 - Excelente comida</p>

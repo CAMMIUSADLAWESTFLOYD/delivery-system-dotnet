@@ -2,8 +2,20 @@
 @using Microsoft.AspNetCore.Http
 <nav class="navbar navbar-expand-lg navbar-delivery mb-4">
     <div class="container">
+        @{
+            // El logo lleva al INICIO del usuario: si tiene sesión, a su propio
+            // panel (no al login, que es lo que hay en "/"); si no, a la portada.
+            var brandHref = (User.Identity != null && User.Identity.IsAuthenticated)
+                ? (User.FindFirst(ClaimTypes.Role)?.Value switch
+                {
+                    "Admin" => "/Admin/Dashboard",
+                    "Delivery" => "/Delivery/Dashboard",
+                    _ => "/Cliente/Dashboard"
+                })
+                : "/";
+        }
         <!-- Logo FlashBite -->
-        <a class="navbar-brand-delivery d-flex align-items-center font-title text-decoration-none" href="/">
+        <a class="navbar-brand-delivery d-flex align-items-center font-title text-decoration-none" href="@brandHref">
             <span class="brand-bolt"><i data-lucide="zap"></i></span>
             <strong>FlashBite</strong>
         </a>
@@ -51,6 +63,7 @@
                     <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Admin/GestionarRestaurantes") || currentPath.StartsWith("/Admin/CreateRestaurant") || currentPath.StartsWith("/Admin/EditRestaurant") ? "active" : "")" href="/Admin/GestionarRestaurantes">Restaurantes</a></li>
                     <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Admin/GestionarProductos") || currentPath.StartsWith("/Admin/CreateProduct") ? "active" : "")" href="/Admin/GestionarProductos">Productos</a></li>
                     <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Admin/MonitorearPedidos") ? "active" : "")" href="/Admin/MonitorearPedidos">Pedidos</a></li>
+                    <li class="nav-item"><a class="nav-link @(currentPath.StartsWith("/Admin/VerificarPagos") ? "active" : "")" href="/Admin/VerificarPagos">Pagos</a></li>
                 }
                 else
                 {

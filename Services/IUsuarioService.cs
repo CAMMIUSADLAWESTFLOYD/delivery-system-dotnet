@@ -27,5 +27,8 @@ public interface IUsuarioService
 
     // Perfil de usuario (Mi cuenta)
     Task CambiarPasswordPerfilAsync(string dni, string passwordActual, string passwordNueva);
+
+    // Reseteo por el administrador: devuelve la contraseña temporal generada.
+    Task<string> ResetearPasswordAsync(string dni);
     Task<string> GuardarFotoPerfilAsync(string dni, Microsoft.AspNetCore.Http.IFormFile foto, string webRootPath);
 }

@@ -14,11 +14,21 @@ public class OrderDetails : ICalculate
     public int Quantity { get; set; }
     public double SubTotal { get; set; }
 
+    // SNAPSHOT del producto al momento de la compra (mundo real): el detalle
+    // guarda su propia copia de nombre y precio. Antes se enlazaba la fila del
+    // catálogo (Products.OrderDetailsId), lo que hacía que un pedido nuevo le
+    // "robara" el producto al anterior y que borrar pedidos arrastrara
+    // productos reales del catálogo.
+    public int? ProductId { get; set; }
+    public string? ProductName { get; set; }
+    public double UnitPrice { get; set; }
+
     public string? OrderId { get; set; }
-    
+
     [ForeignKey("OrderId")]
     public Order? Order { get; set; }
 
+    // Relación legada (pedidos antiguos); los nuevos usan el snapshot.
     public ICollection<Products> Products { get; set; } = new List<Products>();
 
     public OrderDetails()
@@ -31,6 +41,9 @@ public class OrderDetails : ICalculate
         this.Id = oldOrderDetails.Id;
         this.Quantity = oldOrderDetails.Quantity;
         this.SubTotal = oldOrderDetails.SubTotal;
+        this.ProductId = oldOrderDetails.ProductId;
+        this.ProductName = oldOrderDetails.ProductName;
+        this.UnitPrice = oldOrderDetails.UnitPrice;
         this.OrderId = oldOrderDetails.OrderId;
         this.Order = oldOrderDetails.Order;
         this.Products = new List<Products>(oldOrderDetails.Products);
@@ -38,6 +51,13 @@ public class OrderDetails : ICalculate
 
     public double ICalculateSubTotal()
     {
+        // Con snapshot: precio congelado al momento de la compra.
+        if (UnitPrice > 0)
+        {
+            SubTotal = UnitPrice * Quantity;
+            return SubTotal;
+        }
+        // Compatibilidad con pedidos antiguos (relación legada al catálogo).
         double sum = 0;
         foreach (var product in Products)
         {

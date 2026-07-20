@@ -1,0 +1,151 @@
+@model delivery_system_dotnet.Models.Order
+@{
+    ViewData["Title"] = $"Factura {Model.Id} - FlashBite";
+    double subtotal = Model.OrderDetails.Sum(d => d.SubTotal);
+    double envio = Model.DeliveryFee ?? Math.Round(Model.Distance * 1.5, 2);
+    double descuento = Model.DiscountAmount ?? 0;
+    double iva = Math.Round((subtotal + envio) * (delivery_system_dotnet.Interfaces.ICalculate.iva / 100.0), 2);
+    var pago = Model.Payment;
+}
+
+<style>
+    @@media print {
+        header, footer, .no-print { display: none !important; }
+        .main-container { padding: 0 !important; }
+        .dashboard-card { border: 1px solid #999 !important; }
+        body { background: #fff !important; }
+    }
+</style>
+
+<div class="container mt-4 animate-fade-in" style="max-width: 800px;">
+    <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+        <h4 class="section-heading m-0">Factura</h4>
+        <div class="d-flex gap-2">
+            <a href="/Cliente/HistorialPedidos" class="btn btn-delivery-outline btn-sm">
+                <i data-lucide="arrow-left"></i> Volver
+            </a>
+            <button type="button" class="btn btn-delivery-primary btn-sm" onclick="window.print()">
+                <i data-lucide="printer"></i> Imprimir / Guardar PDF
+            </button>
+        </div>
+    </div>
+
+    <div class="dashboard-card">
+        <!-- Encabezado -->
+        <div class="p-4" style="background: var(--fb-navy-900); color: var(--fb-text-inverse);">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <h3 class="m-0" style="color: #fff;">FlashBite Delivery S.A.S.</h3>
+                    <div style="color: rgba(244,247,250,.7); font-size: 13px;">RUC: 1091234567001 · Ibarra, Ecuador</div>
+                    <div style="color: rgba(244,247,250,.7); font-size: 13px;">Factura de venta</div>
+                </div>
+                <div class="text-end">
+                    <div class="fw-bold" style="font-size: 18px; color: #fff;">@Model.Id</div>
+                    <div style="color: rgba(244,247,250,.7); font-size: 13px;">@Model.DateOrder.ToString("dd/MM/yyyy HH:mm")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4">
+            <!-- Cliente y entrega -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="metric-text mb-1">Cliente</div>
+                    <div class="fw-bold">@(Model.Client?.Name ?? "—")</div>
+                    <div class="text-muted small">@(Model.Client?.Mail ?? "")</div>
+                    <div class="text-muted small">Entrega: @Model.DestinyAddres</div>
+                </div>
+                <div class="col-md-6">
+                    <div class="metric-text mb-1">Restaurante</div>
+                    <div class="fw-bold">@(Model.Restaurant?.Name ?? "—")</div>
+                    <div class="text-muted small">@(Model.Restaurant?.Address ?? "")</div>
+                    @if (Model.Delivery != null)
+                    {
+                        <div class="text-muted small">Repartidor: @Model.Delivery.Name</div>
+                    }
+                </div>
+            </div>
+
+            <!-- Detalle -->
+            <table class="table table-delivery m-0 mb-4" style="border: 1px solid var(--fb-border);">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th class="text-center">Cant.</th>
+                        <th class="text-end">P. unit.</th>
+                        <th class="text-end">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var det in Model.OrderDetails)
+                    {
+                        if (!string.IsNullOrEmpty(det.ProductName))
+                        {
+                            <tr>
+                                <td>@det.ProductName</td>
+                                <td class="text-center">@det.Quantity</td>
+                                <td class="text-end" style="font-variant-numeric: tabular-nums;">$@det.UnitPrice.ToString("F2")</td>
+                                <td class="text-end" style="font-variant-numeric: tabular-nums;">$@det.SubTotal.ToString("F2")</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            foreach (var prod in det.Products)
+                            {
+                                <tr>
+                                    <td>@prod.Name</td>
+                                    <td class="text-center">@det.Quantity</td>
+                                    <td class="text-end" style="font-variant-numeric: tabular-nums;">$@prod.Price.ToString("F2")</td>
+                                    <td class="text-end" style="font-variant-numeric: tabular-nums;">$@det.SubTotal.ToString("F2")</td>
+                                </tr>
+                            }
+                        }
+                    }
+                </tbody>
+            </table>
+
+            <div class="row">
+                <!-- Pago -->
+                <div class="col-md-6">
+                    <div class="metric-text mb-1">Método de pago</div>
+                    <div class="fw-bold">@(pago?.PaymentMethod ?? "—")@(string.IsNullOrEmpty(pago?.Reference) ? "" : $" · {pago!.Reference}")</div>
+                    @if (pago != null && pago.Refunded)
+                    {
+                        <span class="badge-delivery badge-delivery-danger mt-1">Reembolsado</span>
+                    }
+                    else if (Model.PaymentStatus)
+                    {
+                        <span class="badge-delivery badge-delivery-success mt-1">Pagado</span>
+                    }
+                    else
+                    {
+                        <span class="badge-delivery badge-delivery-warning mt-1">Pendiente de pago</span>
+                    }
+                </div>
+
+                <!-- Totales -->
+                <div class="col-md-6">
+                    <table class="table m-0" style="font-variant-numeric: tabular-nums;">
+                        <tbody>
+                            <tr><td class="text-muted">Subtotal productos</td><td class="text-end">$@subtotal.ToString("F2")</td></tr>
+                            <tr><td class="text-muted">Envío (@Model.Distance.ToString("F2") km)</td><td class="text-end">$@envio.ToString("F2")</td></tr>
+                            <tr><td class="text-muted">IVA (@delivery_system_dotnet.Interfaces.ICalculate.iva%)</td><td class="text-end">$@iva.ToString("F2")</td></tr>
+                            @if (descuento > 0)
+                            {
+                                <tr><td class="text-muted">Descuento (@Model.DiscountCode)</td><td class="text-end" style="color: var(--fb-success);">-$@descuento.ToString("F2")</td></tr>
+                            }
+                            <tr style="border-top: 2px solid var(--fb-text);">
+                                <td class="fw-bold">TOTAL</td>
+                                <td class="text-end fw-bold" style="font-size: 18px;">$@Model.Total.ToString("F2")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p class="text-muted small mt-4 mb-0">
+                Documento generado el @DateTime.Now.ToString("dd/MM/yyyy HH:mm"). Gracias por tu compra en FlashBite.
+            </p>
+        </div>
+    </div>
+</div>

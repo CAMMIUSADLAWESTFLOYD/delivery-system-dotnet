@@ -106,7 +106,11 @@ public class Order : ICalculate
 
     public double ICalculateDeliveryFee(double distanceVal)
     {
-        return distanceVal * 1.5;
+        // Tarifa urbana: base de $1.50 + $0.35/km, con un tope de $12.
+        // La distancia real se conserva para el mapa, pero nunca produce un
+        // costo de envío desproporcionado en trayectos largos de la simulación.
+        var safeDistance = Math.Max(0, distanceVal);
+        return Math.Min(12.0, 1.5 + safeDistance * 0.35);
     }
 
     public double ICalculateTotal(double price)
@@ -120,15 +124,20 @@ public class Order : ICalculate
 
     public void AddNewProduct(Products product, int quantity)
     {
+        // SNAPSHOT: el detalle copia nombre y precio del producto en el momento
+        // de la compra. NO se enlaza la fila del catálogo (eso hacía que cada
+        // pedido nuevo desvinculara los detalles del pedido anterior).
         var detail = new OrderDetails
         {
             Quantity = quantity,
             OrderId = this.Id,
-            Order = this
+            Order = this,
+            ProductId = product.Id,
+            ProductName = product.Name,
+            UnitPrice = product.Price
         };
-        detail.Products.Add(product);
         detail.ICalculateSubTotal();
-        
+
         OrderDetails.Add(detail);
         
         // Recalculate Total based on all subTotals

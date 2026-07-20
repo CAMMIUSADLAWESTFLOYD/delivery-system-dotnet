@@ -74,6 +74,13 @@
                                     }
                                 </td>
                                 <td class="text-end">
+                                    <form method="post" action="/Admin/ResetearPassword" class="d-inline"
+                                          onsubmit="return confirm('¿Resetear la contraseña de @item.Delivery.Name? Se generará una contraseña temporal que deberás entregarle.');">
+                                        <input type="hidden" name="dni" value="@item.Delivery.Dni" />
+                                        <button type="submit" class="btn btn-sm btn-delivery-outline" title="Generar una contraseña temporal para este repartidor">
+                                            <i data-lucide="key-round"></i> Resetear contraseña
+                                        </button>
+                                    </form>
                                     <form method="post" action="/Admin/CambiarEstadoRepartidor" class="d-inline"
                                           onsubmit="return confirm('@(item.Activo ? "¿Suspender" : "¿Aprobar") a @item.Delivery.Name?');">
                                         <input type="hidden" name="dni" value="@item.Delivery.Dni" />

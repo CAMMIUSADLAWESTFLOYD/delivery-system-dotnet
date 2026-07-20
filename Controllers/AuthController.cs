@@ -47,9 +47,27 @@ public class AuthController : Controller
     [HttpGet]
     public IActionResult Login()
     {
+        // Si el usuario YA inició sesión, no tiene sentido mostrarle el login
+        // (la ruta "/" apunta aquí): se le envía a su propio panel según el rol.
+        if (User.Identity != null && User.Identity.IsAuthenticated)
+        {
+            return RedirectToPanelDelRol();
+        }
+
         ViewBag.Error = Request.Query["error"].ToString();
         ViewBag.Info = Request.Query["info"].ToString();
         return View();
+    }
+
+    // Envía a cada usuario autenticado al panel que le corresponde.
+    private IActionResult RedirectToPanelDelRol()
+    {
+        return User.FindFirst(ClaimTypes.Role)?.Value switch
+        {
+            "Admin" => RedirectToAction("Dashboard", "Admin"),
+            "Delivery" => RedirectToAction("Dashboard", "Delivery"),
+            _ => RedirectToAction("Dashboard", "Cliente")
+        };
     }
 
     [HttpPost]
@@ -231,6 +249,12 @@ public class AuthController : Controller
     [HttpGet]
     public IActionResult Registro(string? error)
     {
+        // Un usuario con sesión abierta tampoco debe ver el formulario de registro.
+        if (User.Identity != null && User.Identity.IsAuthenticated)
+        {
+            return RedirectToPanelDelRol();
+        }
+
         ViewBag.Error = error;
         return View();
     }
@@ -243,6 +267,18 @@ public class AuthController : Controller
             if (string.IsNullOrEmpty(password) || password.Length < 6)
             {
                 return RedirectToAction("Registro", new { error = "La contraseña debe tener al menos 6 caracteres." });
+            }
+
+            var errorEdad = ValidarFechaNacimiento(model.DateBirth);
+            if (errorEdad != null)
+            {
+                return RedirectToAction("Registro", new { error = errorEdad });
+            }
+
+            var errorTel = ValidarTelefono(model.Phone);
+            if (errorTel != null)
+            {
+                return RedirectToAction("Registro", new { error = errorTel });
             }
 
             await _usuarioService.RegistrarClienteAsync(model, password);
@@ -264,6 +300,18 @@ public class AuthController : Controller
                 return RedirectToAction("Registro", new { error = "La contraseña debe tener al menos 6 caracteres." });
             }
 
+            var errorEdad = ValidarFechaNacimiento(model.DateBirth);
+            if (errorEdad != null)
+            {
+                return RedirectToAction("Registro", new { error = errorEdad });
+            }
+
+            var errorTel = ValidarTelefono(model.Phone);
+            if (errorTel != null)
+            {
+                return RedirectToAction("Registro", new { error = errorTel });
+            }
+
             await _usuarioService.RegistrarDeliveryAsync(model, password);
             return RedirectToAction("Login", new { info = "Registro recibido. Un administrador debe aprobar tu vehículo antes de que puedas iniciar sesión." });
         }
@@ -271,6 +319,40 @@ public class AuthController : Controller
         {
             return RedirectToAction("Registro", new { error = ex.Message });
         }
+    }
+
+    // Valida que la fecha de nacimiento sea COHERENTE: no futura y con una edad
+    // razonable (18 a 100 años). Devuelve el mensaje de error, o null si es válida.
+    // Se aplica en el servidor porque los límites del <input type="date"> del
+    // navegador se pueden saltar (herramientas de desarrollo, peticiones directas).
+    // Valida que el teléfono sea coherente para Ecuador: 10 dígitos que empiezan
+    // en 0 (ej. 0991234567). Se ignoran espacios/guiones que el usuario escriba.
+    private static string? ValidarTelefono(string? telefono)
+    {
+        var digitos = new string((telefono ?? "").Where(char.IsDigit).ToArray());
+        if (digitos.Length != 10 || digitos[0] != '0')
+            return "El teléfono debe tener 10 dígitos y empezar con 0 (ej. 0991234567).";
+        return null;
+    }
+
+    private static string? ValidarFechaNacimiento(DateTime nacimiento)
+    {
+        if (nacimiento == default)
+            return "Ingresa una fecha de nacimiento válida.";
+
+        var hoy = DateTime.Today;
+        if (nacimiento.Date > hoy)
+            return "La fecha de nacimiento no puede estar en el futuro.";
+
+        int edad = hoy.Year - nacimiento.Year;
+        if (nacimiento.Date > hoy.AddYears(-edad)) edad--; // aún no cumple años este año
+
+        if (edad < 18)
+            return "Debes tener al menos 18 años para registrarte.";
+        if (edad > 100)
+            return "La fecha de nacimiento no es válida (la edad supera los 100 años).";
+
+        return null;
     }
 
     // NOTA: El registro público de administradores fue eliminado a propósito.

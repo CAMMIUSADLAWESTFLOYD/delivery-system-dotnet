@@ -32,4 +32,18 @@ public class TrackingHub : Hub
             await Clients.Caller.SendAsync("ReceivePosition", snapshot.Lat, snapshot.Lng, snapshot.Phase, snapshot.Progress);
         }
     }
+
+    // Canal de NOTIFICACIONES personales: la identidad sale de la cookie de
+    // sesión (Context.User), nunca de parámetros del cliente — nadie puede
+    // suscribirse al canal de otro usuario.
+    public async Task JoinNotifications()
+    {
+        var dni = Context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var rol = Context.User?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+
+        if (!string.IsNullOrEmpty(dni))
+            await Groups.AddToGroupAsync(Context.ConnectionId, "user-" + dni);
+        if (!string.IsNullOrEmpty(rol))
+            await Groups.AddToGroupAsync(Context.ConnectionId, "role-" + rol);
+    }
 }

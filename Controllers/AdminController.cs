@@ -26,15 +26,18 @@ public class AdminController : Controller
     private readonly IUsuarioService _usuarioService;
     private readonly IDeliveryTrackingService _tracking;
     private readonly IWebHostEnvironment _env;
+    private readonly INotificationService _notificaciones;
 
     public AdminController(ApplicationDbContext context, IOrderManager orderManager,
-        IUsuarioService usuarioService, IDeliveryTrackingService tracking, IWebHostEnvironment env)
+        IUsuarioService usuarioService, IDeliveryTrackingService tracking, IWebHostEnvironment env,
+        INotificationService notificaciones)
     {
         _context = context;
         _orderManager = orderManager;
         _usuarioService = usuarioService;
         _tracking = tracking;
         _env = env;
+        _notificaciones = notificaciones;
     }
 
     public IActionResult Dashboard()
@@ -49,15 +52,6 @@ public class AdminController : Controller
         return View("GestionarProductos", products);
     }
 
-    // Caso de uso "Manage Products" (vista ManageProducts.cshtml).
-    // Reutiliza el mismo catálogo y los mismos endpoints POST
-    // (UpdateStock / AssignCategory / DeleteProduct) que GestionarProductos.
-    [HttpGet]
-    public IActionResult ManageProducts()
-    {
-        var products = _context.Products.Include(p => p.Restaurant).ToList();
-        return View("ManageProducts", products);
-    }
 
     // Guarda un archivo de imagen bajo wwwroot/images/{subcarpeta} y devuelve su ruta pública.
     private async Task<string> GuardarImagenAsync(IFormFile file, string subcarpeta)
@@ -185,8 +179,8 @@ public class AdminController : Controller
         return View(model);
     }
 
-    // Devuelve al usuario a la vista desde la que envió el formulario
-    // (ManageProducts o GestionarProductos), con reserva a la vista indicada.
+    // Devuelve al usuario a la vista desde la que envió el formulario,
+    // con reserva a la acción indicada como respaldo.
     private IActionResult RedirectBack(string fallbackAction)
     {
         var referer = Request.Headers["Referer"].ToString();
@@ -505,7 +499,21 @@ public class AdminController : Controller
     {
         try
         {
+            var deliveryDni = _context.Orders.Where(o => o.Id == orderId).Select(o => o.DeliveryDni).FirstOrDefault();
             _orderManager.ChangeStatus(orderId, "Admin", cancelar ? "Cancelado" : "En Camino");
+
+            // Avisar al repartidor de la decisión del admin. (Al cliente ya lo
+            // notifica RealOrderManager según el nuevo estado.)
+            if (deliveryDni != null)
+            {
+                _ = _notificaciones.NotificarUsuarioAsync(deliveryDni,
+                    cancelar ? "Cancelación aprobada" : "Continúa la entrega",
+                    cancelar
+                        ? $"El administrador canceló el pedido {orderId}."
+                        : $"El administrador rechazó la cancelación: continúa la entrega del pedido {orderId}.",
+                    "/Delivery/GestionarEntregas");
+            }
+
             TempData["Message"] = cancelar
                 ? $"El pedido {orderId} fue cancelado a solicitud del repartidor."
                 : $"La entrega del pedido {orderId} se reanudó.";
@@ -515,6 +523,122 @@ public class AdminController : Controller
             TempData["Error"] = ex.Message;
         }
         return RedirectToAction("MonitorearPedidos");
+    }
+
+    // ============================================================
+    //  Verificación de pagos por transferencia: el cliente reporta el
+    //  número de comprobante en el checkout y el administrador lo
+    //  aprueba (habilita el reparto) o lo rechaza (cancela el pedido).
+    // ============================================================
+    [HttpGet]
+    public IActionResult VerificarPagos()
+    {
+        var pendientes = _context.Payments
+            .Include(p => p.Order)!.ThenInclude(o => o!.Client)
+            .Include(p => p.Order)!.ThenInclude(o => o!.Restaurant)
+            .Where(p => p.PaymentMethod == "Transferencia" && !p.Verified
+                        && p.Order!.Status != "Cancelado")
+            .OrderBy(p => p.Order!.DateOrder)
+            .ToList();
+
+        // Historial reciente de transferencias ya resueltas (contexto útil).
+        ViewBag.Verificadas = _context.Payments
+            .Include(p => p.Order)
+            .Where(p => p.PaymentMethod == "Transferencia" && p.Verified)
+            .OrderByDescending(p => p.VerifiedAt)
+            .Take(10)
+            .ToList();
+
+        // Reembolsos pendientes: pedidos YA pagados (tarjeta o transferencia
+        // verificada) que fueron CANCELADOS y aún no se han reembolsado.
+        ViewBag.ReembolsosPendientes = _context.Payments
+            .Include(p => p.Order)!.ThenInclude(o => o!.Client)
+            .Where(p => p.PaymentMethod != "Efectivo" && p.Verified && !p.Refunded
+                        && p.Order!.Status == "Cancelado")
+            .OrderBy(p => p.Order!.DateOrder)
+            .ToList();
+
+        return View("VerificarPagos", pendientes);
+    }
+
+    // Marca un pago cancelado como reembolsado al cliente.
+    [HttpPost]
+    public IActionResult MarcarReembolso(string orderId)
+    {
+        var pago = _context.Payments
+            .Include(p => p.Order)
+            .FirstOrDefault(p => p.OrderId == orderId);
+        if (pago?.Order == null) return NotFound();
+
+        if (pago.Refunded)
+        {
+            TempData["Error"] = $"El pedido {orderId} ya fue reembolsado.";
+            return RedirectToAction("VerificarPagos");
+        }
+
+        pago.Refunded = true;
+        pago.RefundedAt = DateTime.UtcNow;
+        pago.Order.PaymentStatus = false; // el dinero ya no está en poder del negocio
+        _context.SaveChanges();
+
+        if (pago.Order.ClientDni != null)
+        {
+            _ = _notificaciones.NotificarUsuarioAsync(pago.Order.ClientDni,
+                "Reembolso procesado",
+                $"Se reembolsó ${pago.Order.Total:F2} de tu pedido cancelado {orderId}.",
+                "/Cliente/HistorialPedidos");
+        }
+
+        TempData["Message"] = $"Reembolso del pedido {orderId} (${pago.Order.Total:F2}) marcado como procesado.";
+        return RedirectToAction("VerificarPagos");
+    }
+
+    [HttpPost]
+    public IActionResult ResolverPago(string orderId, bool aprobar)
+    {
+        var pago = _context.Payments
+            .Include(p => p.Order)
+            .FirstOrDefault(p => p.OrderId == orderId && p.PaymentMethod == "Transferencia");
+        if (pago?.Order == null) return NotFound();
+
+        if (aprobar)
+        {
+            pago.Verified = true;
+            pago.VerifiedAt = DateTime.UtcNow;
+            pago.Order.PaymentStatus = true;
+            _context.SaveChanges();
+
+            if (pago.Order.ClientDni != null)
+            {
+                _ = _notificaciones.NotificarUsuarioAsync(pago.Order.ClientDni,
+                    "Pago verificado",
+                    $"Tu transferencia del pedido {orderId} fue confirmada. ¡Ya está en preparación!",
+                    "/Cliente/HistorialPedidos");
+            }
+            TempData["Message"] = $"Transferencia {pago.Reference} del pedido {orderId} verificada: el pedido queda habilitado para reparto.";
+        }
+        else
+        {
+            try
+            {
+                var clientDni = pago.Order.ClientDni;
+                _orderManager.ChangeStatus(orderId, "Admin", "Cancelado");
+                if (clientDni != null)
+                {
+                    _ = _notificaciones.NotificarUsuarioAsync(clientDni,
+                        "Pago rechazado",
+                        $"No pudimos verificar tu transferencia del pedido {orderId}; el pedido fue cancelado.",
+                        "/Cliente/HistorialPedidos");
+                }
+                TempData["Message"] = $"Transferencia {pago.Reference} rechazada: el pedido {orderId} fue cancelado.";
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ex.Message;
+            }
+        }
+
+        return RedirectToAction("VerificarPagos");
     }
 
     // ============================================================
@@ -589,6 +713,43 @@ public class AdminController : Controller
             ? $"Cliente '{cliente.Name}' activado."
             : $"Cliente '{cliente.Name}' suspendido.";
         return RedirectToAction("GestionarClientes");
+    }
+
+    // ============================================================
+    //  RESETEO DE CONTRASEÑA por el administrador (clientes y repartidores).
+    //  Caso real: el usuario perdió su contraseña y no puede recuperarla por
+    //  correo. El admin genera una TEMPORAL, se la entrega, y el usuario la
+    //  cambia luego desde "Mi perfil". La contraseña se muestra UNA sola vez:
+    //  en la base de datos solo queda su hash (BCrypt).
+    // ============================================================
+    [HttpPost]
+    public async Task<IActionResult> ResetearPassword(string dni)
+    {
+        var usuario = await _usuarioService.ObtenerPorDniAsync(dni);
+
+        // Solo clientes y repartidores: las cuentas de administrador se
+        // gestionan en su propia pantalla.
+        var esCliente = usuario is Client;
+        var esRepartidor = usuario is Delivery;
+        var destino = esRepartidor ? "GestionarRepartidores" : "GestionarClientes";
+
+        if (usuario == null || (!esCliente && !esRepartidor))
+        {
+            TempData["Error"] = "Solo se puede resetear la contraseña de clientes y repartidores.";
+            return RedirectToAction(destino);
+        }
+
+        try
+        {
+            var temporal = await _usuarioService.ResetearPasswordAsync(dni);
+            TempData["Message"] = $"Contraseña de '{usuario.Name}' reseteada. Contraseña temporal: {temporal} — entrégasela y pídele que la cambie desde su perfil.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
+        return RedirectToAction(destino);
     }
 
     // ============================================================

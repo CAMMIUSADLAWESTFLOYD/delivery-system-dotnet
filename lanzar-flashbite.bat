@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  FlashBite - Lanzador: app + tunel publico flashbite.loca.lt
+REM  FlashBite - Lanzador: app + tunel publico sin password
 REM  Doble clic y listo. Cierra esta ventana para apagar todo.
 REM ============================================================
 title FlashBite Delivery - Servidor + Tunel
@@ -20,16 +20,17 @@ start "FlashBite App" /min cmd /c "cd bin\Debug\net10.0 && delivery-system-dotne
 REM Esperar a que el servidor responda antes de abrir el tunel
 timeout /t 8 /nobreak > nul
 
-echo [3/3] Publicando en internet: https://flashbite.loca.lt ...
+echo [3/3] Publicando en internet usando Tunnelmole...
 echo.
 echo ============================================================
-echo   URL PUBLICA :  https://flashbite.loca.lt
-for /f %%i in ('curl -s https://loca.lt/mytunnelpassword') do echo   PASSWORD    :  %%i   (se pide una sola vez por visitante)
+echo   Revisa mas abajo la URL que te asigna Tunnelmole
+echo   (No tendra contrasena)
 echo ============================================================
 echo.
 echo Deja esta ventana abierta mientras quieras compartir el sitio.
 echo.
-npx -y localtunnel --port 5000 --subdomain flashbite
+npx -y tunnelmole 5000
 
 REM Al cerrar el tunel, apagar tambien la app
 taskkill /IM delivery-system-dotnet.exe /F > nul 2>&1
+

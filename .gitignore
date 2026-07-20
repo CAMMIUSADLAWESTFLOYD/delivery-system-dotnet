@@ -19,3 +19,6 @@ delivery.db-wal
 
 ## Local tools
 .dotnet/
+
+## Runtime logs (app y túneles)
+*.log

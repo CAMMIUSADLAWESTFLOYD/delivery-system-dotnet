@@ -25,4 +25,7 @@ public interface IDeliveryTrackingService
 
     // Estado actual del recorrido (ruta + posición) para clientes recién conectados.
     TrackingSnapshot? GetSnapshot(string orderId);
+
+    // Recupera simulaciones activas después de reiniciar el servidor.
+    void ResumeActiveDeliveries();
 }

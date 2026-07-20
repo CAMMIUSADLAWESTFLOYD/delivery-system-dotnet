@@ -24,14 +24,19 @@ public class DeliveryController : Controller
     private readonly IOrderManager _orderManager;
     private readonly IUsuarioService _usuarioService;
     private readonly IWebHostEnvironment _env;
+    private readonly IRiderAssignmentService _riderAssignment;
+    private readonly INotificationService _notificaciones;
 
     public DeliveryController(ApplicationDbContext context, IOrderManager orderManager,
-        IUsuarioService usuarioService, IWebHostEnvironment env)
+        IUsuarioService usuarioService, IWebHostEnvironment env,
+        IRiderAssignmentService riderAssignment, INotificationService notificaciones)
     {
         _context = context;
         _orderManager = orderManager;
         _usuarioService = usuarioService;
         _env = env;
+        _riderAssignment = riderAssignment;
+        _notificaciones = notificaciones;
     }
 
     public IActionResult Dashboard()
@@ -79,6 +84,12 @@ public class DeliveryController : Controller
             _orderManager.ChangeStatus(orderId, "Delivery", "CancelacionSolicitada");
             order.CancelRequestReason = motivo.Trim();
             _context.SaveChanges();
+
+            _ = _notificaciones.NotificarRolAsync("Admin",
+                "Solicitud de cancelación",
+                $"El repartidor pide cancelar el pedido {orderId}: {motivo.Trim()}",
+                "/Admin/MonitorearPedidos");
+
             TempData["Message"] = $"Solicitud de cancelación del pedido {orderId} enviada al administrador.";
         }
         catch (Exception ex)
@@ -136,11 +147,83 @@ public class DeliveryController : Controller
         return View("VerMapa", order);
     }
 
+    [HttpGet]
+    public IActionResult TrackingStatus(string orderId)
+    {
+        var deliveryDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var order = _context.Orders
+            .FirstOrDefault(o => o.Id == orderId && o.DeliveryDni == deliveryDni);
+        if (order == null) return NotFound();
+
+        var phase = order.Status switch
+        {
+            "Aceptado" => "to_restaurant",
+            "Preparando" => "at_restaurant",
+            "En Camino" => "to_client",
+            "Entregado" => "delivered",
+            _ => "idle"
+        };
+
+        return Json(new
+        {
+            order.Status,
+            phase,
+            currentLat = order.CurrentLatitude,
+            currentLng = order.CurrentLongitude
+        });
+    }
+
+    // IDs de los pedidos actualmente ASIGNADOS a este repartidor (activos).
+    // Lo usan los paneles (Dashboard / GestionarEntregas) para detectar en vivo
+    // cuando el sistema le asigna un pedido NUEVO y refrescar la lista solos,
+    // sin depender de que el repartidor tuviera el navegador abierto justo en el
+    // instante en que llegó el toast (que es efímero).
+    [HttpGet]
+    public IActionResult PedidosActivosIds()
+    {
+        var deliveryDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var ids = _context.Orders
+            .Where(o => o.DeliveryDni == deliveryDni && o.Status != "Entregado" && o.Status != "Cancelado")
+            .OrderBy(o => o.DateOrder)
+            .Select(o => o.Id)
+            .ToList();
+        return Json(ids);
+    }
+
     [HttpPost]
-    public IActionResult AceptarPedido(string orderId)
+    public IActionResult AceptarPedido(string orderId, double? latitude, double? longitude)
     {
         try
         {
+            var deliveryDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            // Solo el repartidor al que se le ASIGNÓ el pedido puede aceptarlo
+            // (evita que un repartidor acepte el pedido de otro).
+            var pedido = _context.Orders.FirstOrDefault(o => o.Id == orderId && o.DeliveryDni == deliveryDni);
+            if (pedido == null)
+            {
+                TempData["Error"] = "Ese pedido no está asignado a ti.";
+                return RedirectToAction("GestionarEntregas");
+            }
+
+            var delivery = _context.Deliveries.FirstOrDefault(d => d.Dni == deliveryDni);
+            if (delivery != null && latitude is >= -90 and <= 90 && longitude is >= -180 and <= 180
+                && latitude != 0 && longitude != 0)
+            {
+                delivery.Latitude = latitude;
+                delivery.Longitude = longitude;
+                delivery.LastLocationUpdate = DateTime.UtcNow;
+                _context.SaveChanges();
+            }
+            // Mundo real: un pago por transferencia debe estar VERIFICADO por el
+            // administrador antes de que el pedido entre a reparto.
+            var pago = _context.Payments.FirstOrDefault(p => p.OrderId == orderId);
+            if (pago != null && pago.PaymentMethod == "Transferencia" && !pago.Verified)
+            {
+                TempData["Error"] = $"El pedido {orderId} se pagó por transferencia (comprobante {pago.Reference}) y el administrador aún no la verifica. Podrás aceptarlo cuando el pago esté aprobado.";
+                return RedirectToAction("GestionarEntregas");
+            }
+
             _orderManager.ChangeStatus(orderId, "Delivery", "Aceptado");
             TempData["Message"] = $"Pedido {orderId} aceptado con éxito.";
         }
@@ -155,15 +238,25 @@ public class DeliveryController : Controller
     [HttpPost]
     public IActionResult RechazarPedido(string orderId)
     {
-        var order = _context.Orders.FirstOrDefault(o => o.Id == orderId);
-        if (order != null)
+        var deliveryDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        // Solo el repartidor asignado puede rechazar el pedido (evita que un
+        // repartidor libere/reasigne la entrega en curso de otro).
+        var order = _context.Orders.FirstOrDefault(o => o.Id == orderId && o.DeliveryDni == deliveryDni);
+        if (order == null)
         {
-            order.DeliveryDni = null; // Liberar el pedido para reasignación
-            _context.SaveChanges();
-            _orderManager.ChangeStatus(orderId, "Admin", "Pendiente"); // El proxy manager prohíbe pasar a Pendiente desde Delivery, así que simulo como Admin o salto el proxy, mejor modifico el status directamente.
+            TempData["Error"] = "Ese pedido no está asignado a ti.";
+            return RedirectToAction("GestionarEntregas");
         }
-        
-        TempData["Message"] = $"Has rechazado el pedido {orderId}.";
+
+        order.DeliveryDni = null;    // liberar el pedido
+        order.Status = "Pendiente";  // vuelve a la cola de asignación
+        _context.SaveChanges();
+
+        // Reasignar al SIGUIENTE repartidor más cercano, excluyendo a quien
+        // rechazó (para que no se le vuelva a asignar el mismo pedido).
+        _riderAssignment.AsignarPendientes(excluirDni: deliveryDni);
+
+        TempData["Message"] = $"Has rechazado el pedido {orderId}. Se reasignará a otro repartidor.";
         return RedirectToAction("GestionarEntregas");
     }
 
@@ -172,6 +265,22 @@ public class DeliveryController : Controller
     {
         try
         {
+            var deliveryDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            // Solo el repartidor asignado puede actualizar el estado de la entrega.
+            if (!_context.Orders.Any(o => o.Id == orderId && o.DeliveryDni == deliveryDni))
+            {
+                TempData["Error"] = "Ese pedido no está asignado a ti.";
+                return RedirectToAction("GestionarEntregas");
+            }
+
+            // La salida del restaurante la controla la simulación después de
+            // completar el primer trayecto y la espera de preparación.
+            if (newStatus == "En Camino")
+            {
+                TempData["Error"] = "Debes completar primero el recorrido y la espera en el restaurante.";
+                return RedirectToAction("GestionarEntregas");
+            }
+
             _orderManager.ChangeStatus(orderId, "Delivery", newStatus);
             TempData["Message"] = $"Entrega {orderId} actualizada a '{newStatus}' con éxito.";
         }
@@ -188,6 +297,14 @@ public class DeliveryController : Controller
     {
         try
         {
+            var deliveryDni = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            // Solo el repartidor asignado puede reportar una incidencia del pedido.
+            if (!_context.Orders.Any(o => o.Id == orderId && o.DeliveryDni == deliveryDni))
+            {
+                TempData["Error"] = "Ese pedido no está asignado a ti.";
+                return RedirectToAction("GestionarEntregas");
+            }
+
             _orderManager.ChangeStatus(orderId, "Delivery", "Reportado");
             TempData["Message"] = $"Incidente para el pedido {orderId} reportado: '{issueDescription}'.";
         }
@@ -268,6 +385,12 @@ public class DeliveryController : Controller
 
         repartidor.Status = disponible;
         _context.SaveChanges();
+
+        // Al ponerse disponible, toma un pedido que estuviera esperando repartidor.
+        if (disponible)
+        {
+            _riderAssignment.AsignarPendientes();
+        }
 
         TempData["Message"] = disponible
             ? "Ahora apareces como disponible."

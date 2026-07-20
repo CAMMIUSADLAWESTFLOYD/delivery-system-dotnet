@@ -42,7 +42,7 @@
                     {
                         <div class="cart-item-card">
                             <div class="d-flex align-items-center">
-                                <img src="/images/products/hamburguesas.jpg" alt="@item.ProductName" class="cart-item-logo" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 15px;" />
+                                <img src="@(string.IsNullOrWhiteSpace(item.ImagePath) ? "/images/products/hamburguesas.jpg" : item.ImagePath)" alt="@item.ProductName" class="cart-item-logo" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 15px;" onerror="this.onerror=null;this.src='/images/products/hamburguesas.jpg';" />
                                 <div>
                                     <h6 class="font-title mb-1">@item.ProductName</h6>
                                     <span class="text-muted small">$@item.Price.ToString("F2") c/u · @(item.Available ? "Disponible" : "Agotado")</span>
@@ -151,17 +151,11 @@
                             <label class="form-label font-weight-bold mb-2">Dirección de Entrega (referencia)</label>
                             <input type="text" name="destinyAddres" class="form-control mb-2" placeholder="Ej: Calle Principal 123" required value="@address" />
 
-                            <label class="form-label font-weight-bold mb-2 mt-2">Seleccionar Repartidor</label>
-                            <select name="deliveryDni" class="form-select" required>
-                                <option value="">-- Elige un repartidor disponible --</option>
-                                @if (ViewBag.Repartidores != null)
-                                {
-                                    foreach (var rep in (IEnumerable<delivery_system_dotnet.Models.Delivery>)ViewBag.Repartidores)
-                                    {
-                                        <option value="@rep.Dni">@rep.Name (@rep.TypeVehicle)</option>
-                                    }
-                                }
-                            </select>
+                            <div class="d-flex align-items-center gap-2 p-2 mt-2" style="border: 1px solid var(--fb-border); background: var(--fb-surface-alt);">
+                                <i data-lucide="bike"></i>
+                                <small class="text-muted">El sistema asignará automáticamente al
+                                repartidor disponible más cercano al restaurante.</small>
+                            </div>
 
                             <!-- Método de pago -->
                             <label class="form-label font-weight-bold mb-2 mt-3">Método de pago</label>
@@ -178,6 +172,53 @@
                                     <input type="radio" name="paymentMethod" value="Efectivo" class="form-check-input m-0" />
                                     <i data-lucide="banknote"></i> <span>Efectivo contra entrega</span>
                                 </label>
+                            </div>
+
+                            <!-- ================== Datos de la tarjeta ================== -->
+                            <div id="cardFields" class="mt-2 p-3" style="display: none; border: 1px solid var(--fb-border); background: var(--fb-surface-alt);">
+                                <label class="form-label mb-1">Número de tarjeta</label>
+                                <input type="text" name="cardNumber" id="cardNumber" class="form-control mb-2"
+                                       inputmode="numeric" autocomplete="off" maxlength="23" placeholder="0000 0000 0000 0000" />
+                                <label class="form-label mb-1">Titular de la tarjeta</label>
+                                <input type="text" name="cardHolder" class="form-control mb-2 text-uppercase"
+                                       autocomplete="off" maxlength="60" placeholder="COMO APARECE EN LA TARJETA" />
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="form-label mb-1">Expira (MM/AA)</label>
+                                        <input type="text" name="cardExpiry" id="cardExpiry" class="form-control"
+                                               inputmode="numeric" autocomplete="off" maxlength="5" placeholder="12/28" />
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label mb-1">CVV</label>
+                                        <input type="password" name="cardCvv" class="form-control"
+                                               inputmode="numeric" autocomplete="off" maxlength="4" placeholder="123" />
+                                    </div>
+                                </div>
+                                <small class="text-muted d-block mt-2">
+                                    Pago simulado de demostración: no se realiza ningún cobro real y solo se
+                                    guardan la marca y los últimos 4 dígitos. Prueba con 4111 1111 1111 1111.
+                                </small>
+                            </div>
+
+                            <!-- ================== Datos de la transferencia ================== -->
+                            <div id="transferFields" class="mt-2 p-3" style="display: none; border: 1px solid var(--fb-border); background: var(--fb-surface-alt);">
+                                <p class="mb-1 fw-bold"><i data-lucide="landmark"></i> Transfiere el total a:</p>
+                                <table class="table table-sm m-0 mb-2" style="font-size: 13px;">
+                                    <tbody>
+                                        <tr><td class="text-muted">Banco</td><td>Banco Pichincha</td></tr>
+                                        <tr><td class="text-muted">Cuenta corriente</td><td>2100456789</td></tr>
+                                        <tr><td class="text-muted">Titular</td><td>FlashBite Delivery S.A.S.</td></tr>
+                                        <tr><td class="text-muted">RUC</td><td>1091234567001</td></tr>
+                                        <tr><td class="text-muted">Monto</td><td class="fw-bold" id="transferMonto">el total del pedido</td></tr>
+                                    </tbody>
+                                </table>
+                                <label class="form-label mb-1">Número de comprobante de la transferencia</label>
+                                <input type="text" name="transferReference" id="transferReference" class="form-control"
+                                       autocomplete="off" minlength="6" maxlength="40" placeholder="Ej.: 745812369" />
+                                <small class="text-muted d-block mt-1">
+                                    El administrador verificará tu comprobante contra la cuenta del negocio.
+                                    El pedido entra a reparto cuando el pago quede aprobado.
+                                </small>
                             </div>
                         </div>
 
@@ -348,12 +389,15 @@
                 // =========================================================
                 //  Resumen de pago en vivo: envío por km, IVA y descuento.
                 //  Refleja EXACTAMENTE la fórmula del servidor:
-                //    envío = km × 1.50 ; IVA = (subtotal + envío) × 15% ;
+                //    envío = base $1.50 + km × $0.35 (máx. $12) ;
+                //    IVA = (subtotal + envío) × 15% ;
                 //    descuento = subtotal × pct ; total = suma - descuento.
                 // =========================================================
                 var SUBTOTAL = @Model.Subtotal.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 var IVA_PCT = @delivery_system_dotnet.Interfaces.ICalculate.iva / 100.0;
-                var TARIFA_KM = 1.5;
+                var TARIFA_BASE = 1.5;
+                var TARIFA_KM = 0.35;
+                var ENVIO_MAXIMO = 12.0;
                 var currentKm = null;
                 var descuentoPct = 0;
                 var lastCap = null;
@@ -371,7 +415,7 @@
                 function recalc() {
                     if (currentKm == null) return;
                     var km = Math.min(50, Math.max(0.3, currentKm));
-                    var envio = km * TARIFA_KM;
+                    var envio = Math.min(ENVIO_MAXIMO, TARIFA_BASE + km * TARIFA_KM);
                     var iva = (SUBTOTAL + envio) * IVA_PCT;
                     var desc = SUBTOTAL * descuentoPct / 100;
                     var total = Math.max(0, SUBTOTAL + envio + iva - desc);
@@ -395,6 +439,42 @@
                     currentKm = km;
                     recalc();
                 }
+
+                // ---------- Interfaz según método de pago ----------
+                var cardBox = document.getElementById('cardFields');
+                var transferBox = document.getElementById('transferFields');
+                var camposTarjeta = cardBox.querySelectorAll('input');
+                var campoComprobante = document.getElementById('transferReference');
+
+                function actualizarMetodoPago() {
+                    var metodo = (document.querySelector('input[name="paymentMethod"]:checked') || {}).value;
+                    var esTarjeta = metodo === 'Tarjeta';
+                    var esTransfer = metodo === 'Transferencia';
+                    cardBox.style.display = esTarjeta ? 'block' : 'none';
+                    transferBox.style.display = esTransfer ? 'block' : 'none';
+                    // required dinámico: solo los campos visibles son obligatorios
+                    camposTarjeta.forEach(function (inp) { inp.required = esTarjeta; });
+                    campoComprobante.required = esTransfer;
+                    // el monto exacto a transferir = total actual del resumen
+                    if (esTransfer) {
+                        document.getElementById('transferMonto').textContent =
+                            document.getElementById('sumTotal').textContent + ' (exacto)';
+                    }
+                }
+                document.querySelectorAll('input[name="paymentMethod"]').forEach(function (radio) {
+                    radio.addEventListener('change', actualizarMetodoPago);
+                });
+                actualizarMetodoPago();
+
+                // Formateo del número de tarjeta en grupos de 4 y de MM/AA
+                document.getElementById('cardNumber').addEventListener('input', function () {
+                    var d = this.value.replace(/\D/g, '').slice(0, 19);
+                    this.value = d.replace(/(.{4})/g, '$1 ').trim();
+                });
+                document.getElementById('cardExpiry').addEventListener('input', function () {
+                    var d = this.value.replace(/\D/g, '').slice(0, 4);
+                    this.value = d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
+                });
 
                 // ---------- Código de descuento (validación AJAX) ----------
                 document.getElementById('btnAplicarDescuento').addEventListener('click', function () {

@@ -1,5 +1,8 @@
 ﻿@{
     ViewData["Title"] = "Crear Cuenta - FlashBite";
+    // Rango coherente de fecha de nacimiento: entre 18 y 100 años (no futuro).
+    var maxNacimiento = DateTime.Today.AddYears(-18).ToString("yyyy-MM-dd");
+    var minNacimiento = DateTime.Today.AddYears(-100).ToString("yyyy-MM-dd");
 }
 
 <div class="auth-split-container animate-fade-in">
@@ -54,7 +57,9 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Fecha de Nacimiento</label>
-                            <input type="date" class="form-control" name="DateBirth" required />
+                            <input type="date" class="form-control" name="DateBirth" required
+                                   min="@minNacimiento" max="@maxNacimiento" />
+                            <div class="form-text">Debes tener entre 18 y 100 años.</div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Género</label>
@@ -75,7 +80,10 @@
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Teléfono</label>
-                            <input type="text" class="form-control" name="Phone" required placeholder="+569123456" />
+                            <input type="tel" class="form-control" name="Phone" required
+                                   pattern="0[0-9]{9}" maxlength="10" inputmode="numeric"
+                                   placeholder="0991234567" title="Ingresa 10 dígitos, ej. 0991234567" />
+                            <div class="form-text">10 dígitos, empieza con 0 (ej. 0991234567).</div>
                         </div>
                     </div>
                     <div class="row">
@@ -115,7 +123,9 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Fecha de Nacimiento</label>
-                            <input type="date" class="form-control" name="DateBirth" required />
+                            <input type="date" class="form-control" name="DateBirth" required
+                                   min="@minNacimiento" max="@maxNacimiento" />
+                            <div class="form-text">Debes tener entre 18 y 100 años.</div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Género</label>
@@ -136,7 +146,10 @@
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Teléfono</label>
-                            <input type="text" class="form-control" name="Phone" required placeholder="+569123456" />
+                            <input type="tel" class="form-control" name="Phone" required
+                                   pattern="0[0-9]{9}" maxlength="10" inputmode="numeric"
+                                   placeholder="0991234567" title="Ingresa 10 dígitos, ej. 0991234567" />
+                            <div class="form-text">10 dígitos, empieza con 0 (ej. 0991234567).</div>
                         </div>
                     </div>
                     <div class="mb-3">
