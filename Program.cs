@@ -14,13 +14,17 @@ using delivery_system_dotnet.Models;
 using delivery_system_dotnet.Profiles;
 using delivery_system_dotnet.Services;
 
+// PostgreSQL (Npgsql): permite guardar DateTime.Now (fechas locales) en columnas
+// "timestamp" igual que con SQL Server. Debe ir antes de usar el DbContext.
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddUserSecrets<Program>();
 
-// 1. Configurar DbContext con SQL Server
+// 1. Configurar DbContext con PostgreSQL
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseNpgsql(connectionString));
 
 // 2. Registrar ManualMapper
 builder.Services.AddSingleton<IMapper, ManualMapper>();
@@ -245,6 +249,30 @@ app.MapHub<TrackingHub>("/hubs/tracking");
 // Recuperar recorridos que estaban activos si el servidor fue reiniciado.
 app.Services.GetRequiredService<IDeliveryTrackingService>().ResumeActiveDeliveries();
 
+// Abrir el navegador automáticamente cuando se ejecuta el .exe directamente
+// (o con lanzar-flashbite.bat). Con F5 en Visual Studio (entorno Development)
+// el navegador ya lo abre Visual Studio, así que aquí no se repite.
+if (!app.Environment.IsDevelopment())
+{
+    app.Lifetime.ApplicationStarted.Register(() =>
+    {
+        try
+        {
+            var url = app.Urls.FirstOrDefault(u => u.StartsWith("http://"))
+                      ?? app.Urls.FirstOrDefault()
+                      ?? "http://localhost:5000";
+            url = url.Replace("0.0.0.0", "localhost").Replace("[::]", "localhost")
+                     .Replace("://+", "://localhost").Replace("://*", "://localhost");
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch
+        {
+            // Sin navegador disponible (p. ej. en un servidor): no pasa nada.
+        }
+    });
+}
+
 app.Run();
 
 
@@ -260,11 +288,11 @@ static void ResetDatabaseCompletely(ApplicationDbContext context)
     try
     {
         // 1. Limpieza Destructiva (Orden Topológico Inverso)
-        context.Database.ExecuteSqlRaw("DELETE FROM OrderDetails");
-        context.Database.ExecuteSqlRaw("DELETE FROM Payments");
-        context.Database.ExecuteSqlRaw("DELETE FROM Orders");
-        context.Database.ExecuteSqlRaw("DELETE FROM Products");
-        context.Database.ExecuteSqlRaw("DELETE FROM Restaurants");
+        context.Database.ExecuteSqlRaw("DELETE FROM \"OrderDetails\"");
+        context.Database.ExecuteSqlRaw("DELETE FROM \"Payments\"");
+        context.Database.ExecuteSqlRaw("DELETE FROM \"Orders\"");
+        context.Database.ExecuteSqlRaw("DELETE FROM \"Products\"");
+        context.Database.ExecuteSqlRaw("DELETE FROM \"Restaurants\"");
         context.SaveChanges();
 
         // 2. Inserción de Restaurantes reales de Ibarra, Imbabura, Ecuador.

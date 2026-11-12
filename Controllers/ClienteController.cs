@@ -53,7 +53,7 @@ public class ClienteController : Controller
 
         if (!string.IsNullOrEmpty(search))
         {
-            query = query.Where(p => p.Name.Contains(search));
+            query = query.Where(p => p.Name.ToLower().Contains(search.ToLower())); // búsqueda sin distinguir mayúsculas (PostgreSQL)
         }
 
         var products = query.ToList();
@@ -376,7 +376,7 @@ public class ClienteController : Controller
         var query = _context.Restaurants.Where(r => r.IsActive);
 
         if (!string.IsNullOrEmpty(search))
-            query = query.Where(r => r.Name.Contains(search));
+            query = query.Where(r => r.Name.ToLower().Contains(search.ToLower())); // búsqueda sin distinguir mayúsculas (PostgreSQL)
 
         if (!string.IsNullOrEmpty(category))
             query = query.Where(r => r.Category == category);

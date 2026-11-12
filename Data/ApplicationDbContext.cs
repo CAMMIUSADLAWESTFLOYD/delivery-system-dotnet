@@ -40,6 +40,15 @@ public class ApplicationDbContext : DbContext
             .Property<bool>("Activo")
             .HasDefaultValue(true);
 
+        // PostgreSQL distingue mayúsculas/minúsculas (SQL Server no). Esta intercalación
+        // hace que "Admin@Mail.com" y "admin@mail.com" se traten como el mismo correo
+        // al iniciar sesión y al validar que el correo sea único.
+        modelBuilder.HasCollation("sin_mayusculas", locale: "und-u-ks-level2", provider: "icu", deterministic: false);
+
+        modelBuilder.Entity<Person>()
+            .Property(p => p.Mail)
+            .UseCollation("sin_mayusculas");
+
         // Unique constraint on Mail
         modelBuilder.Entity<Person>()
             .HasIndex(p => p.Mail)

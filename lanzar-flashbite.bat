@@ -20,6 +20,8 @@ start "FlashBite App" /min cmd /c "cd bin\Debug\net10.0 && delivery-system-dotne
 REM Esperar a que el servidor responda antes de abrir el tunel
 timeout /t 8 /nobreak > nul
 
+REM (El navegador lo abre la propia aplicacion al arrancar)
+
 echo [3/3] Publicando en internet usando Tunnelmole...
 echo.
 echo ============================================================
